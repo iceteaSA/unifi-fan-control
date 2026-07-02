@@ -17,15 +17,33 @@ fi
 systemctl stop fan-control.service 2>/dev/null || true
 systemctl disable fan-control.service 2>/dev/null || true
 
-# Reset all fan PWM channels to 0
+# Return fan channels to automatic control, or max PWM if automatic control is unavailable.
 # Mirrors the detection logic in fan-control.sh to find all active channels
 reset_ok=false
+
+release_pwm() {
+    local pwm_file="$1"
+    local enable_file="${pwm_file}_enable"
+
+    if [ -w "$enable_file" ] && echo 2 > "$enable_file" 2>/dev/null; then
+        echo "Restored automatic fan control on $enable_file"
+        reset_ok=true
+        return 0
+    fi
+
+    if echo 255 > "$pwm_file" 2>/dev/null; then
+        echo "Set $pwm_file to fail-safe 255 PWM"
+        reset_ok=true
+        return 0
+    fi
+
+    return 1
+}
 
 # Strategy 1: pwm files directly in hwmon class directories
 for pwm_file in /sys/class/hwmon/hwmon*/pwm[1-9]; do
     if [ -e "$pwm_file" ]; then
-        echo "Resetting $pwm_file to 0..."
-        echo 0 > "$pwm_file" 2>/dev/null && reset_ok=true
+        release_pwm "$pwm_file" || true
     fi
 done
 
@@ -35,8 +53,7 @@ if [ "$reset_ok" = false ]; then
         dev_path=$(readlink -f "$hwmon_dir/device" 2>/dev/null) || continue
         for pwm_file in "$dev_path"/pwm[1-9]; do
             if [ -e "$pwm_file" ]; then
-                echo "Resetting $pwm_file to 0..."
-                echo 0 > "$pwm_file" 2>/dev/null && reset_ok=true
+                release_pwm "$pwm_file" || true
             fi
         done
     done

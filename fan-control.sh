@@ -6,6 +6,7 @@
 ###[ CONFIGURATION ]###########################################################
 CONFIG_FILE="/data/fan-control/config"
 TEMP_STATE_FILE="/data/fan-control/temp_state"
+CONFIG_DIR=$(dirname "$CONFIG_FILE")
 
 # Define default configuration values
 DEFAULT_MIN_PWM=91             # Minimum active fan speed (0-255)
@@ -23,18 +24,52 @@ DEFAULT_DEADBAND=1             # Temp stability threshold (°C)
 DEFAULT_ALPHA=20               # Smoothing factor, lower values make the smoothed temp follow raw temp more closely (0-100)
 DEFAULT_LEARNING_RATE=5        # PWM optimization step size
 
-# Create config file if it doesn't exist
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    logger -t fan-control "CONFIG: Creating new config file"
+secure_config_dir() {
+    if [[ -L "$CONFIG_DIR" ]]; then
+        logger -t fan-control "FATAL: Config directory is a symlink: $CONFIG_DIR"
+        exit 1
+    fi
 
-    # Create directory if it doesn't exist
-    config_dir=$(dirname "$CONFIG_FILE")
-    if [[ ! -d "$config_dir" ]]; then
-        if ! mkdir -p "$config_dir" 2>/dev/null; then
-            logger -t fan-control "FATAL: Failed to create config directory: $config_dir"
+    if [[ ! -d "$CONFIG_DIR" ]]; then
+        if ! mkdir -p "$CONFIG_DIR" 2>/dev/null; then
+            logger -t fan-control "FATAL: Failed to create config directory: $CONFIG_DIR"
             exit 1
         fi
     fi
+
+    chown root:root "$CONFIG_DIR" 2>/dev/null || {
+        logger -t fan-control "FATAL: Failed to set owner on config directory: $CONFIG_DIR"
+        exit 1
+    }
+    chmod 700 "$CONFIG_DIR" 2>/dev/null || {
+        logger -t fan-control "FATAL: Failed to set permissions on config directory: $CONFIG_DIR"
+        exit 1
+    }
+}
+
+secure_config_file() {
+    if [[ -L "$CONFIG_FILE" ]]; then
+        logger -t fan-control "FATAL: Config file is a symlink: $CONFIG_FILE"
+        exit 1
+    fi
+
+    [[ -f "$CONFIG_FILE" ]] || return 0
+
+    chown root:root "$CONFIG_FILE" 2>/dev/null || {
+        logger -t fan-control "FATAL: Failed to set owner on config file: $CONFIG_FILE"
+        exit 1
+    }
+    chmod 600 "$CONFIG_FILE" 2>/dev/null || {
+        logger -t fan-control "FATAL: Failed to set permissions on config file: $CONFIG_FILE"
+        exit 1
+    }
+}
+
+secure_config_dir
+
+# Create config file if it doesn't exist
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    logger -t fan-control "CONFIG: Creating new config file"
 
     # Use a temporary file and atomic move to prevent partial writes
     temp_config="${CONFIG_FILE}.tmp"
@@ -65,6 +100,7 @@ DEFAULTS
     fi
 fi
 
+secure_config_file
 
 # Source the config file
 source "$CONFIG_FILE" 2>/dev/null
@@ -136,6 +172,7 @@ if [ ${#missing_params[@]} -gt 0 ]; then
                 logger -t fan-control "ERROR: Failed to update config file"
                 rm -f "$temp_config" 2>/dev/null  # Clean up the temporary file
             else
+                secure_config_file
                 logger -t fan-control "CONFIG: Configuration file updated successfully"
             fi
         fi
@@ -187,6 +224,7 @@ ALPHA=$ALPHA               # Smoothing factor (0-100)
 LEARNING_RATE=$LEARNING_RATE        # PWM optimization step size
 CONFIG
         if mv "$temp_config" "$CONFIG_FILE" 2>/dev/null; then
+            secure_config_file
             logger -t fan-control "MIGRATE: Config file updated successfully"
         else
             logger -t fan-control "MIGRATE: Failed to update config file"
@@ -261,6 +299,7 @@ CONFIG
         logger -t fan-control "ERROR: Failed to update config file with corrected values"
         rm -f "$temp_config" 2>/dev/null  # Clean up the temporary file
     else
+        secure_config_file
         logger -t fan-control "CONFIG: Configuration file updated with corrected values"
     fi
 fi
@@ -277,6 +316,21 @@ if ! command -v ubnt-systool >/dev/null 2>&1; then
 fi
 
 ###[ PWM DEVICE DETECTION ]####################################################
+enable_manual_pwm_control() {
+    local pwm_file="$1"
+    local enable_file="${pwm_file}_enable"
+
+    [[ -e "$enable_file" ]] || return 0
+
+    if echo 1 > "$enable_file" 2>/dev/null; then
+        logger -t fan-control "DETECT: Enabled manual PWM control on $enable_file"
+        return 0
+    fi
+
+    logger -t fan-control "DETECT: Failed to enable manual PWM control on $enable_file"
+    return 1
+}
+
 # Detect all active fan PWM channels
 # Populates the FAN_PWM_DEVICES array with writable PWM paths that have spinning fans
 detect_pwm_devices() {
@@ -321,6 +375,7 @@ detect_pwm_devices() {
 
         # Test actual writability by writing the current value back
         # (sysfs file permissions are unreliable — a file may show 644 but still be writable by root)
+        enable_manual_pwm_control "$pwm_file" || continue
         local current_val
         current_val=$(cat "$pwm_file" 2>/dev/null) || continue
         if ! echo "$current_val" > "$pwm_file" 2>/dev/null; then
@@ -341,6 +396,7 @@ detect_pwm_devices() {
     if [[ ${#detected[@]} -eq 0 ]]; then
         logger -t fan-control "DETECT: No spinning fans found, using all writable PWM channels"
         for pwm_file in "${candidates[@]}"; do
+            enable_manual_pwm_control "$pwm_file" || continue
             local current_val
             current_val=$(cat "$pwm_file" 2>/dev/null) || continue
             echo "$current_val" > "$pwm_file" 2>/dev/null && detected+=("$pwm_file")
@@ -363,6 +419,10 @@ if [[ "$FAN_PWM_AUTODETECT" != "false" ]]; then
 else
     # Manual override — validate the configured single device
     logger -t fan-control "DETECT: Auto-detect disabled, using configured device: $FAN_PWM_DEVICE"
+    enable_manual_pwm_control "$FAN_PWM_DEVICE" || {
+        logger -t fan-control "FATAL: Failed to enable manual PWM control for $FAN_PWM_DEVICE"
+        exit 1
+    }
     _current_val=$(cat "$FAN_PWM_DEVICE" 2>/dev/null) || {
         logger -t fan-control "FATAL: PWM device $FAN_PWM_DEVICE not readable"
         exit 1
@@ -380,6 +440,8 @@ mkdir -p "$(dirname "$TEMP_STATE_FILE")" "$(dirname "$OPTIMAL_PWM_FILE")" || {
     logger -t fan-control "FATAL: Failed to create required directories"
     exit 1
 }
+chown root:root "$(dirname "$TEMP_STATE_FILE")" "$(dirname "$OPTIMAL_PWM_FILE")" 2>/dev/null || true
+chmod 700 "$(dirname "$TEMP_STATE_FILE")" "$(dirname "$OPTIMAL_PWM_FILE")" 2>/dev/null || true
 
 # Single instance check
 PID_FILE="/var/run/fan-control.pid"
@@ -396,12 +458,41 @@ if [[ -f "$PID_FILE" ]]; then
     fi
 fi
 
-# Create PID file with atomic lock
-(
-    flock -x 200
-    echo $$ > "$PID_FILE"
-    trap 'for _d in "${FAN_PWM_DEVICES[@]}"; do echo 0 > "$_d" 2>/dev/null; done; rm -f "$PID_FILE"; exit' EXIT INT TERM
-) 200>"$PID_FILE"
+safe_release_fans() {
+    local pwm_dev enable_dev released
+
+    for pwm_dev in "${FAN_PWM_DEVICES[@]}"; do
+        enable_dev="${pwm_dev}_enable"
+        released=false
+
+        if [[ -w "$enable_dev" ]] && echo 2 > "$enable_dev" 2>/dev/null; then
+            logger -t fan-control "CLEANUP: Restored automatic fan control on $enable_dev"
+            released=true
+        fi
+
+        if [[ "$released" = false ]] && echo "${MAX_PWM:-255}" > "$pwm_dev" 2>/dev/null; then
+            logger -t fan-control "CLEANUP: Set $pwm_dev to fail-safe ${MAX_PWM:-255}pwm"
+        fi
+    done
+}
+
+cleanup() {
+    safe_release_fans
+    rm -f "$PID_FILE"
+}
+
+# Keep the lock file descriptor open for the lifetime of the daemon.
+exec 200>"$PID_FILE" || {
+    logger -t fan-control "FATAL: Failed to open PID file: $PID_FILE"
+    exit 1
+}
+if ! flock -n 200; then
+    logger -t fan-control "ALERT: Another fan-control instance holds the PID lock"
+    exit 1
+fi
+echo $$ > "$PID_FILE"
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 ###[ CORE FUNCTIONALITY ]######################################################
 # State definitions
@@ -418,6 +509,7 @@ SMOOTHED_TEMP=50   # Current smoothed temperature
 LAST_ADJUSTMENT=0  # Timestamp of last PWM optimization
 LAST_AVG_TEMP=0    # Previous temperature (for deadband calculations)
 TEMP_READ_FAILURES=0  # Track consecutive temperature reading failures
+SENSOR_FAILSAFE_ACTIVE=false
 
 # Function to safely write to a file using atomic operations
 atomic_write_file() {
@@ -437,13 +529,20 @@ atomic_write_file() {
 }
 
 # Initialize smoothed temp from state file or raw temp
-raw_temp=$(ubnt-systool cputemp | awk '{print int($1)}' || echo 50)
+raw_temp_output=$(ubnt-systool cputemp 2>/dev/null)
+if [[ "$raw_temp_output" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    raw_temp=$(echo "$raw_temp_output" | awk '{print int($1)}')
+else
+    raw_temp=50
+    logger -t fan-control "WARNING: Failed to read initial temperature, using ${raw_temp}°C"
+fi
 if [[ -f "$TEMP_STATE_FILE" ]]; then
     saved_temp=$(cat "$TEMP_STATE_FILE" 2>/dev/null)
     # Validate saved temperature is a number and within reasonable range
     if [[ "$saved_temp" =~ ^[0-9]+$ ]] && (( saved_temp >= 20 && saved_temp <= 100 )); then
         # Don't use saved temp if it's too far from current raw temp (prevents large jumps)
-        if (( ${saved_temp#-} - ${raw_temp#-} < 15 )); then
+        saved_temp_diff=$((saved_temp - raw_temp))
+        if (( ${saved_temp_diff#-} < 15 )); then
             SMOOTHED_TEMP=$saved_temp
             logger -t fan-control "INIT: Loaded saved temp=${SMOOTHED_TEMP}°C | Raw=${raw_temp}°C"
         else
@@ -470,15 +569,10 @@ get_smoothed_temp() {
 
         # After 3 consecutive failures, take safety measures
         if (( TEMP_READ_FAILURES >= 3 )); then
-            logger -t fan-control "ALERT: Multiple temperature read failures - using last known temperature"
-            # If in doubt, maintain current fan speed or increase it for safety
-            if (( CURRENT_STATE != STATE_EMERGENCY && SMOOTHED_TEMP > MIN_TEMP + 10 )); then
+            [[ "$SENSOR_FAILSAFE_ACTIVE" = true ]] || logger -t fan-control "ALERT: Multiple temperature read failures - entering fan fail-safe"
+            SENSOR_FAILSAFE_ACTIVE=true
+            if (( CURRENT_STATE != STATE_EMERGENCY )); then
                 logger -t fan-control "SAFETY: Activating emergency mode due to sensor failure"
-                # Don't change SMOOTHED_TEMP, but act as if in emergency
-                if (( CURRENT_STATE != STATE_ACTIVE && CURRENT_STATE != STATE_EMERGENCY )); then
-                    CURRENT_STATE=$STATE_ACTIVE
-                    set_fan_speed $OPTIMAL_PWM
-                fi
             fi
         fi
 
@@ -486,6 +580,8 @@ get_smoothed_temp() {
         raw_temp=$SMOOTHED_TEMP
     else
         # Reset failure counter on successful read
+        [[ "$SENSOR_FAILSAFE_ACTIVE" = false ]] || logger -t fan-control "RECOVERY: Temperature sensor readings restored"
+        SENSOR_FAILSAFE_ACTIVE=false
         TEMP_READ_FAILURES=0
         raw_temp=$(echo "$raw_temp_output" | awk '{print int($1)}')
     fi
@@ -513,7 +609,6 @@ get_smoothed_temp() {
     fi
 
     logger -t fan-control "TEMP:  RAW=${raw_temp}°C | SMOOTH=${SMOOTHED_TEMP}°C | DELTA=$((raw_temp - SMOOTHED_TEMP))°C"
-    echo $SMOOTHED_TEMP
 }
 
 calculate_speed() {
@@ -540,25 +635,34 @@ calculate_speed() {
 # Speed control with logging
 set_fan_speed() {
     local new_speed=$1
-    local current_temp=$(get_smoothed_temp)
+    local current_temp
     local reason="Normal operation"
+    local emergency_override=0
+
+    get_smoothed_temp
+    current_temp=$SMOOTHED_TEMP
 
     # Emergency override
     if (( current_temp >= MAX_TEMP )); then
         new_speed=$MAX_PWM
         reason="EMERGENCY: Temp ${current_temp}°C ≥ ${MAX_TEMP}°C"
+        emergency_override=1
+    elif (( CURRENT_STATE == STATE_EMERGENCY && new_speed >= MAX_PWM )); then
+        new_speed=$MAX_PWM
+        reason="EMERGENCY: fail-safe mode"
+        emergency_override=1
     fi
 
     # Special handling for OFF state
-    if (( CURRENT_STATE == STATE_OFF )); then
+    if (( CURRENT_STATE == STATE_OFF && emergency_override == 0 )); then
         new_speed=0  # Force 0 PWM regardless of other logic
         reason="OFF state override"
     else
         # Apply ramp limits only in non-OFF states
-        if (( new_speed > LAST_PWM + MAX_PWM_STEP )); then
+        if (( emergency_override == 0 && new_speed > LAST_PWM + MAX_PWM_STEP )); then
             reason="Ramp-up limited: ${LAST_PWM}→$((LAST_PWM + MAX_PWM_STEP))pwm"
             new_speed=$(( LAST_PWM + MAX_PWM_STEP ))
-        elif (( new_speed < LAST_PWM - MAX_PWM_STEP )); then
+        elif (( emergency_override == 0 && new_speed < LAST_PWM - MAX_PWM_STEP )); then
             reason="Ramp-down limited: ${LAST_PWM}→$((LAST_PWM - MAX_PWM_STEP))pwm"
             new_speed=$(( LAST_PWM - MAX_PWM_STEP ))
         fi
@@ -665,12 +769,21 @@ set_fan_speed() {
 
 ###[ STATE MANAGEMENT ]########################################################
 update_fan_state() {
-    local avg_temp=$(get_smoothed_temp)
+    local avg_temp
     local now=$(date +%s)
     local state_transition=""
 
+    get_smoothed_temp
+    avg_temp=$SMOOTHED_TEMP
+
     # Check for emergency condition first
-    if (( avg_temp >= MAX_TEMP )); then
+    if [[ "$SENSOR_FAILSAFE_ACTIVE" = true ]]; then
+        if (( CURRENT_STATE != STATE_EMERGENCY )); then
+            state_transition="→EMERGENCY (temperature sensor fail-safe)"
+            CURRENT_STATE=$STATE_EMERGENCY
+        fi
+        set_fan_speed $MAX_PWM
+    elif (( avg_temp >= MAX_TEMP )); then
         if (( CURRENT_STATE != STATE_EMERGENCY )); then
             state_transition="→EMERGENCY (${avg_temp}°C ≥ ${MAX_TEMP}°C)"
             CURRENT_STATE=$STATE_EMERGENCY
@@ -769,7 +882,8 @@ if ! [[ "$OPTIMAL_PWM" =~ ^[0-9]+$ ]] || (( OPTIMAL_PWM < MIN_PWM || OPTIMAL_PWM
 fi
 logger -t fan-control "START: Optimal=${OPTIMAL_PWM}pwm | Config: MIN=${MIN_TEMP}°C, MAX=${MAX_TEMP}°C, HYST=${HYSTERESIS}°C"
 
-initial_temp=$(get_smoothed_temp)
+get_smoothed_temp
+initial_temp=$SMOOTHED_TEMP
 if (( initial_temp >= FAN_ACTIVATION_TEMP )); then
     logger -t fan-control "COLDSTART: Initial temp ${initial_temp}°C ≥ ${FAN_ACTIVATION_TEMP}°C"
     CURRENT_STATE=$STATE_ACTIVE
@@ -798,7 +912,8 @@ while true; do
     # Log status every 10 iterations
     (( loop_counter++ % 10 == 0 )) && {
         state_name=$(get_state_name $CURRENT_STATE)
-        current_temp=$(get_smoothed_temp)
+        get_smoothed_temp
+        current_temp=$SMOOTHED_TEMP
         logger -t fan-control "STATUS: State=${state_name} | PWM=${LAST_PWM} | Temp=${current_temp}°C"
     }
 
