@@ -10,6 +10,9 @@ WorkingDirectory=/data/fan-control
 ExecStart=/data/fan-control/fan-control.sh
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
 # 24h window for log rate limiting
 LogRateLimitIntervalSec=86400
 # Allow 10k logs/day

@@ -42,6 +42,9 @@ if [ ! -w "/data/fan-control" ]; then
     exit 1
 fi
 
+chown root:root /data/fan-control
+chmod 700 /data/fan-control
+
 # Function to get a file from local directory or download from GitHub
 get_file() {
     local filename="$1"
@@ -63,15 +66,24 @@ get_file() {
 
 # Get fan control script
 get_file "fan-control.sh" "/data/fan-control/fan-control.sh"
-chmod +x /data/fan-control/fan-control.sh
+chown root:root /data/fan-control/fan-control.sh
+chmod 755 /data/fan-control/fan-control.sh
 
 # Get uninstall script
 get_file "uninstall.sh" "/data/fan-control/uninstall.sh"
-chmod +x /data/fan-control/uninstall.sh
+chown root:root /data/fan-control/uninstall.sh
+chmod 755 /data/fan-control/uninstall.sh
+
+if [ -f /data/fan-control/config ]; then
+    chown root:root /data/fan-control/config
+    chmod 600 /data/fan-control/config
+fi
 
 # Install systemd service
 SERVICE_FILE="/etc/systemd/system/fan-control.service"
 get_file "fan-control.service" "$SERVICE_FILE"
+chown root:root "$SERVICE_FILE"
+chmod 644 "$SERVICE_FILE"
 
 # Verify service file was created
 if [ ! -f "$SERVICE_FILE" ]; then
