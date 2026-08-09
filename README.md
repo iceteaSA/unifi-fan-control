@@ -5,9 +5,10 @@ Advanced temperature management for Ubiquiti UniFi OS devices with fan control.
 Confirmed working on: UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, UNVR
 
 **Not supported: UniFi switches (USW line).** They run BusyBox `sh` with no bash, no
-`ubnt-systool` for temperature, and no systemd — and their fans are generally firmware
-controlled rather than exposed as writable `/sys/class/hwmon/*/pwm*`. This needs consoles
-and gateways running full UniFi OS.
+`ubnt-systool` for temperature, and no systemd — and their fans are firmware controlled
+rather than exposed as writable `/sys/class/hwmon/*/pwm*`. Confirmed on a USW Enterprise
+48 PoE running 7.5.9: no `/sys/class/hwmon/*/pwm*` entries exist at all. This needs
+consoles and gateways running full UniFi OS.
 
 > This project is built and maintained independently. If it keeps your UniFi gear cool and quiet, [consider supporting it](https://ko-fi.com/H2H719VB0U).
 
