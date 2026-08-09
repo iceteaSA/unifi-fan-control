@@ -35,6 +35,7 @@ setup_sandbox() {
     export FAN_CONTROL_PID_FILE="$SANDBOX/pid"
     export FAN_CONTROL_OPTIMAL_PWM_FILE="$SANDBOX/optimal_pwm"
     export FAN_CONTROL_HWMON_BASE="$SANDBOX/hwmon"
+    export FAN_CONTROL_VERSION_FILE="$SANDBOX/VERSION"
 
     # Build fake hwmon tree — one device with one PWM channel
     local hwmon_dir="$SANDBOX/hwmon/hwmon0"

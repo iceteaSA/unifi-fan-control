@@ -5,8 +5,9 @@ Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM
 ## What this repo actually is
 
 - `fan-control.sh` — the entire application: a single long-running bash daemon (config bootstrap → migration → validation → PWM auto-detection → state machine loop). All logic lives here.
-- `install.sh` / `uninstall.sh` — run ON the UniFi device as root. `install.sh` prefers local files next to itself, otherwise downloads from `raw.githubusercontent.com/iceteaSA/unifi-fan-control/$FAN_CONTROL_BRANCH` (default `main`). Pushing to `main` is effectively releasing — users install via `curl | sudo bash` from raw main.
+- `install.sh` / `uninstall.sh` — run ON the UniFi device as root. `install.sh` prefers local files next to itself, otherwise downloads from `raw.githubusercontent.com/iceteaSA/unifi-fan-control/$FAN_CONTROL_BRANCH` (default `main`). Tagged releases (`vX.Y.Z`) are the production identity; installer version pinning is not available yet.
 - `fan-control.service` — systemd unit installed to `/etc/systemd/system/`; runs `/data/fan-control/fan-control.sh` as root.
+- `VERSION` — repository release identity, stored as bare SemVer and logged at daemon startup.
 - Runtime state on device: `/data/fan-control/{config,temp_state,optimal_pwm}` plus `/var/run/fan-control.pid`.
 
 ## Verification
@@ -20,7 +21,7 @@ shellcheck fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 shfmt -i 4 -ci -d fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 ```
 
-The sandboxed suite has 9 tests after Phase 0 and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2, not permission to add new warnings.
+The sandboxed suite has 11 tests after Phase 3 and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2, not permission to add new warnings.
 - Nothing here runs on a dev machine: the script hard-requires `ubnt-systool` (UniFi-only) and writable `/sys/class/hwmon/*/pwm*`. Real testing means deploying to a device and watching `journalctl -u fan-control.service -f`. CONTRIBUTING.md lists the manual test scenarios (cold start, hot start, state transitions, sensor failure).
 - To test a branch on a device: `sudo FAN_CONTROL_BRANCH=<branch> ./install.sh` (or the curl one-liner against that branch).
 
@@ -35,6 +36,6 @@ The sandboxed suite has 9 tests after Phase 0 and needs no device or root; it us
 
 ## Conventions
 
-- Commits: conventional-commit style (`feat:`, `fix:`, `docs:`, `refactor:`), imperative, ≤72-char subject. Branches: `feature/`, `fix/`, `docs/`, `refactor/` prefixes.
+- Commits: conventional-commit style (`feat:`, `fix:`, `docs:`, `refactor:`), imperative, ≤72-char subject. Branches: `feature/`, `fix/`, `docs/`, `refactor/`, `ci/` prefixes.
 - Docs that must stay in sync with code changes: README.md (config table, features), TROUBLESHOOTING.md (known issues), CHANGELOG.md (Keep a Changelog format).
 - PRs use `.github/PULL_REQUEST_TEMPLATE.md`.

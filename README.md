@@ -33,6 +33,13 @@ Confirmed working on: UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, 
 curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
 ```
 
+The `main` branch is the development stream. Tagged releases (`vX.Y.Z`) are the
+production identity for this project. Release Please updates `VERSION` and
+`CHANGELOG.md`, and each release publishes a runtime tarball containing
+`fan-control.sh`, `uninstall.sh`, `fan-control.service`, and `VERSION`, plus a
+separate `SHA256SUMS` file. Installer version pinning is not available yet;
+the current installer command follows `main`.
+
 ### Using a Different Branch
 If you want to install from a specific branch (e.g., for testing new features):
 
@@ -155,6 +162,9 @@ CONFIG: Missing parameter detected: CHECK_INTERVAL
 CONFIG: Updating configuration file with 1 missing parameters
 CONFIG: Configuration file updated successfully
 
+# Deployed version
+CONFIG: fan-control vX.Y.Z starting
+
 # System Status
 STATUS: State=ACTIVE | PWM=120 | Temp=72℃
 STATUS: State=EMERGENCY | PWM=255 | Temp=86℃
@@ -229,12 +239,15 @@ systemctl restart fan-control.service  # Apply config changes
 
 ## Project Structure
 - **fan-control.sh**: The main script that monitors temperature and controls fan speed
+- **VERSION**: Bare SemVer identity for the deployed daemon
 - **install.sh**: Installation script that copies files and sets up the systemd service
   - Supports installation from different branches via the `FAN_CONTROL_BRANCH` environment variable
   - Automatically downloads required files if not found locally
 - **uninstall.sh**: Script to remove the fan control system
 - **fan-control.service**: Systemd service configuration
 - **tests/**: Sandboxed test suite (no device, no root required); run with `tests/run-tests.sh`
+- **release-please-config.json** / **.release-please-manifest.json**: Tagged-release automation configuration
+- **.github/workflows/release.yml**: Builds and verifies tagged release assets
 
 ## Star History
 
