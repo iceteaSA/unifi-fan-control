@@ -11,6 +11,7 @@ This guide covers common issues and their solutions for the UniFi Fan Control sy
 - [Installation Issues](#installation-issues)
 - [Performance Issues](#performance-issues)
 - [Diagnostic Commands](#diagnostic-commands)
+- [Hardware Compatibility Notes](#hardware-compatibility-notes)
 
 ---
 
@@ -533,6 +534,44 @@ If you're still experiencing issues:
 ---
 
 ## Hardware Compatibility Notes
+
+### Service disappeared after a UniFi OS update
+
+Check whether it is actually gone, or just stopped:
+
+```bash
+systemctl status fan-control.service
+ls -l /data/fan-control/ /etc/systemd/system/fan-control.service
+```
+
+If both the unit and `/data/fan-control` are missing, the overlay was rebuilt — that is a
+factory reset, `reset2defaults`, re-adoption, or a recovery flow, not a routine firmware
+update. UniFi OS keeps the firmware as a read-only lower layer and everything you install
+in an upper layer, and both halves of this install live in that upper layer. A normal
+update replaces the lower layer only.
+
+A useful tell: if other things you installed vanished at the same time, it was the
+overlay, not this project. Reinstall with the one-liner in the README; your config comes
+back only if `/data/fan-control/config` survived.
+
+### Unsupported hardware: UniFi switches (USW line)
+
+`-sh: bash: not found` on a USW means exactly what it says. Switches run BusyBox `sh`,
+not bash, and nothing is installed when this happens — it fails on the first command.
+
+Four separate things block it, not one: no bash (the daemon uses `[[ ]]`, `(( ))` and
+arrays throughout), no `ubnt-systool` for CPU temperature, no systemd, and fans that are
+typically firmware controlled rather than exposed to userspace.
+
+To check whether your device exposes fans at all:
+
+```sh
+ls /sys/class/hwmon/*/pwm* 2>/dev/null || echo "no pwm files"
+command -v ubnt-systool || echo "no ubnt-systool"
+```
+
+No output from the first means the fans are not software-controllable there, and no
+script of any kind will help.
 
 ### Different PWM Device Paths
 
