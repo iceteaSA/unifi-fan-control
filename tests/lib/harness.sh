@@ -102,6 +102,10 @@ STUB
 echo "smartctl $*" >> "${SANDBOX:-/tmp}/drive_calls"
 device="${!#}"
 device_name="${device##*/}"
+if [[ -f "${SANDBOX:-/tmp}/smartctl_standby_${device_name}" ]]; then
+    echo "Device is in STANDBY mode, exit(2)" >&2
+    exit 2
+fi
 if [[ -f "${SANDBOX:-/tmp}/smartctl_fail" || -f "${SANDBOX:-/tmp}/smartctl_fail_${device_name}" ]]; then
     exit 1
 fi
