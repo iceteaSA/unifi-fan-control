@@ -21,7 +21,9 @@ shellcheck fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 shfmt -i 4 -ci -d fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 ```
 
-The sandboxed suite has 11 tests after Phase 3 and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2, not permission to add new warnings.
+The sandboxed suite has 11 tests and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. ShellCheck and shfmt are both hard-zero — there is no baseline any more.
+
+**Match CI's tool versions or the gates lie.** CI pins `shellcheck v0.11.0` and `shfmt v3.13.1` (see `.github/workflows/ci.yml`). Older ShellCheck emits findings 0.11 dropped — an apt-installed runner once failed on SC2002 that a local 0.11 run passed cleanly, so a green local gate meant nothing. Check with `shellcheck --version` before trusting a local pass.
 - Nothing here runs on a dev machine: the script hard-requires `ubnt-systool` (UniFi-only) and writable `/sys/class/hwmon/*/pwm*`. Real testing means deploying to a device and watching `journalctl -u fan-control.service -f`. CONTRIBUTING.md lists the manual test scenarios (cold start, hot start, state transitions, sensor failure).
 - To test a branch on a device: `sudo FAN_CONTROL_BRANCH=<branch> ./install.sh`. Branch installs are unverified; use a release pin for a checksum-verified deployment.
 

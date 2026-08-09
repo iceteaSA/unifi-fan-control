@@ -17,10 +17,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
-      - name: Install lint tools
+      # Pinned rather than apt-installed: the runner image's shellcheck drifts, and a
+      # version skew makes the documented local gates disagree with CI. Bump these
+      # deliberately, and re-run the gates locally at the same versions when you do.
+      - name: Install pinned lint tools
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+          SHFMT_VERSION: v3.13.1
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck shfmt
+          set -euo pipefail
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | tar -xJf - --strip-components=1 -C /usr/local/bin "shellcheck-${SHELLCHECK_VERSION}/shellcheck"
+          curl -fsSL -o /usr/local/bin/shfmt \
+            "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64"
+          chmod +x /usr/local/bin/shfmt
+          shellcheck --version | grep '^version:'
+          shfmt --version
       - name: Bash syntax
         shell: bash
         run: |

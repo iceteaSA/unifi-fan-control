@@ -246,6 +246,11 @@ install_environment() {
 install_piped_environment() {
     (
         cd "$INSTALLER_DIR"
+        # The cat is deliberate: it makes stdin a PIPE, reproducing the documented
+        # `curl -fsSL ... | sudo bash` install. `bash < install.sh` would make stdin a
+        # regular file instead -- a scenario no user hits -- so the linter's suggested
+        # rewrite would silently weaken what this test covers.
+        # shellcheck disable=SC2002
         cat install.sh | env \
             FAN_CONTROL_INSTALL_DIR="$INSTALL_DIR" \
             FAN_CONTROL_SERVICE_FILE="$SERVICE_FILE" \
