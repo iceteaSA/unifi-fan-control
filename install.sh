@@ -3,6 +3,10 @@ set -e
 set -o pipefail
 
 PAYLOAD_FILES=(fan-control.sh uninstall.sh fan-control.service VERSION)
+# rc1 is 10,515 B and fan-control.sh is 38,059 B; these retain ample release headroom.
+readonly MAX_ARCHIVE_BYTES=$((2 * 1024 * 1024))
+readonly MAX_EXPANDED_ARCHIVE_BYTES=$((4 * 1024 * 1024))
+readonly MAX_PAYLOAD_FILE_BYTES=$((512 * 1024))
 REPO_OWNER="iceteaSA"
 REPO_NAME="unifi-fan-control"
 INSTALL_DIR="${FAN_CONTROL_INSTALL_DIR:-/data/fan-control}"
@@ -68,10 +72,15 @@ validate_payload() {
     local expected_version="${2:-}"
     local filename
     local payload_version
+    local payload_size
 
     for filename in "${PAYLOAD_FILES[@]}"; do
         if [[ ! -f "$payload_dir/$filename" ]]; then
             fail "Missing payload file: $filename"
+        fi
+        payload_size=$(wc -c <"$payload_dir/$filename")
+        if ((payload_size > MAX_PAYLOAD_FILE_BYTES)); then
+            fail "Payload file exceeds size limit: $filename"
         fi
     done
 
@@ -113,19 +122,35 @@ validate_archive_header_types() {
     local type_byte
     local size_field
     local size
+    local magic
     local found_end=0
 
-    if ! gzip -dc "$archive" >"$raw_archive"; then
+    if ! (
+        ulimit -f "$((MAX_EXPANDED_ARCHIVE_BYTES / 512 + 1))"
+        gzip -dc "$archive" >"$raw_archive"
+    ); then
+        raw_size=$(wc -c <"$raw_archive")
+        if ((raw_size > MAX_EXPANDED_ARCHIVE_BYTES)); then
+            fail "Release archive exceeds expanded size limit"
+        fi
         fail "Release archive could not be decompressed"
     fi
     dd if=/dev/zero of="$zero_block" bs=512 count=1 status=none
     raw_size=$(wc -c <"$raw_archive")
+    if ((raw_size > MAX_EXPANDED_ARCHIVE_BYTES)); then
+        fail "Release archive exceeds expanded size limit"
+    fi
 
     while ((block * 512 < raw_size)); do
         dd if="$raw_archive" of="$header" bs=512 skip="$block" count=1 status=none
         if cmp -s "$header" "$zero_block"; then
             found_end=1
             break
+        fi
+
+        magic=$(dd if="$header" bs=1 skip=257 count=5 status=none | od -An -tx1 | tr -d '[:space:]')
+        if [[ "$magic" != 7573746172 ]]; then
+            fail "Release archive is not ustar format"
         fi
 
         type_byte=$(dd if="$header" bs=1 skip=156 count=1 status=none | od -An -tu1 | tr -d '[:space:]')
@@ -183,7 +208,7 @@ download_verified_release() {
     local actual_checksum
     local filename
 
-    if ! curl -fsSL "$RELEASE_BASE_URL/download/$tag/$archive_name" -o "$archive"; then
+    if ! curl -fsSL --max-filesize "$MAX_ARCHIVE_BYTES" "$RELEASE_BASE_URL/download/$tag/$archive_name" -o "$archive"; then
         fail "Failed to download release archive: $tag"
     fi
     if ! curl -fsSL "$RELEASE_BASE_URL/download/$tag/SHA256SUMS" -o "$checksum_file"; then
@@ -205,6 +230,7 @@ download_verified_release() {
         fail "Checksum mismatch for $archive_name"
     fi
 
+    # BusyBox strips leading / and ../ here, so raw-header validation remains required.
     if ! tar -tzf "$archive" >"$WORK_DIR/archive-files"; then
         fail "Release archive could not be listed"
     fi

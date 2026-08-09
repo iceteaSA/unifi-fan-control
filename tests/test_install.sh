@@ -60,6 +60,9 @@ while (($# > 0)); do
             write_format="$2"
             shift 2
             ;;
+        --max-filesize)
+            shift 2
+            ;;
         -*)
             shift
             ;;
@@ -123,6 +126,24 @@ make_release_fixture() {
         printf '%s  unrelated.tar.gz\n' "$(printf '0%.0s' {1..64})"
         printf '%s  %s\n' "$checksum" "$archive_name"
     } >"$case_dir/SHA256SUMS"
+}
+
+rebuild_release_fixture() {
+    local archive_name="unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+    local archive="$CASE_DIR/$archive_name"
+    local checksum
+
+    tar -czf "$archive" -C "$CASE_DIR/payload" "${PAYLOAD_FILES[@]}"
+    checksum=$(sha256sum "$archive" | awk '{print $1}')
+    printf '%s  %s\n' "$checksum" "$archive_name" >"$CASE_DIR/SHA256SUMS"
+}
+
+write_comment_payload() {
+    local destination="$1"
+    local bytes="$2"
+
+    dd if=/dev/zero bs=1 count="$bytes" status=none | tr '\000' '#' >"$destination"
+    printf '\n' >>"$destination"
 }
 
 append_tar_entry() {
@@ -304,6 +325,7 @@ test_exact_version_uses_verified_release_urls() {
     assert_file_set
     assert_contains "$(cat "$CURL_LOG")" "/download/v1.2.3/unifi-fan-control-v1.2.3.tar.gz" "version archive URL: "
     assert_contains "$(cat "$CURL_LOG")" "/download/v1.2.3/SHA256SUMS" "version checksum URL: "
+    assert_contains "$(cat "$CURL_LOG")" "max-filesize 2097152" "archive size cap: "
 }
 
 test_piped_installer_ignores_cwd_payload() {
@@ -441,6 +463,28 @@ test_syntax_failure_keeps_destination() {
     assert_failed_install_keeps_destination FAN_CONTROL_VERSION=1.2.3
 }
 
+test_oversized_payload_keeps_destination() {
+    prepare_case oversized-payload
+    MOCK_VERSION=1.2.3
+    make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
+    write_comment_payload "$CASE_DIR/payload/fan-control.sh" $((512 * 1024 + 1))
+    rebuild_release_fixture
+    seed_old_install
+
+    assert_failed_install_keeps_destination FAN_CONTROL_VERSION=1.2.3
+}
+
+test_oversized_expansion_keeps_destination() {
+    prepare_case oversized-expansion
+    MOCK_VERSION=1.2.3
+    make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
+    write_comment_payload "$CASE_DIR/payload/fan-control.sh" $((4 * 1024 * 1024 + 1))
+    rebuild_release_fixture
+    seed_old_install
+
+    assert_failed_install_keeps_destination FAN_CONTROL_VERSION=1.2.3
+}
+
 test_verified_release_installs_and_preserves_config() {
     prepare_case success
     MOCK_VERSION=1.2.3
@@ -481,6 +525,8 @@ test_checksum_mismatch_keeps_destination
 test_unrelated_checksum_cannot_pass_vacuously
 test_hostile_archives_keep_destination
 test_syntax_failure_keeps_destination
+test_oversized_payload_keeps_destination
+test_oversized_expansion_keeps_destination
 test_verified_release_installs_and_preserves_config
 test_restart_failure_restores_prior_payload
 
