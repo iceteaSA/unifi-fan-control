@@ -34,7 +34,7 @@ if [[ "$1" == "is-active" ]]; then
         grep -Eq '^(enable|restart)' "$SYSTEMCTL_LOG"; then
         exit 0
     fi
-    exit
+    exit 1
 fi
 if [[ "${MOCK_SYSTEMCTL_FAIL:-}" == "$1" ]]; then
     exit 1
@@ -125,15 +125,18 @@ make_release_fixture() {
     } >"$case_dir/SHA256SUMS"
 }
 
-make_hostile_archive() {
+append_tar_entry() {
     local archive="$1"
     local name="$2"
     local type="$3"
     local header="$archive.header"
-    local body="payload"
+    local body="${4:-payload}"
     local checksum
     local padding
 
+    if [[ "$type" != 0 ]]; then
+        body=""
+    fi
     dd if=/dev/zero of="$header" bs=512 count=1 status=none
     printf '%s' "$name" | dd of="$header" bs=1 seek=0 conv=notrunc status=none
     printf '0000644\0' | dd of="$header" bs=1 seek=100 conv=notrunc status=none
@@ -143,18 +146,47 @@ make_hostile_archive() {
     printf '%011o\0' 0 | dd of="$header" bs=1 seek=136 conv=notrunc status=none
     printf '        ' | dd of="$header" bs=1 seek=148 conv=notrunc status=none
     printf '%s' "$type" | dd of="$header" bs=1 seek=156 conv=notrunc status=none
+    if [[ "$type" == 1 || "$type" == 2 ]]; then
+        printf 'uninstall.sh' | dd of="$header" bs=1 seek=157 conv=notrunc status=none
+    fi
+    if [[ "$type" == 3 ]]; then
+        printf '0000000\0' | dd of="$header" bs=1 seek=329 conv=notrunc status=none
+        printf '0000000\0' | dd of="$header" bs=1 seek=337 conv=notrunc status=none
+    fi
     printf 'ustar\0' | dd of="$header" bs=1 seek=257 conv=notrunc status=none
     printf '00' | dd of="$header" bs=1 seek=263 conv=notrunc status=none
     checksum=$(od -An -v -tu1 "$header" | awk '{ for (i = 1; i <= NF; i++) sum += $i } END { print sum }')
     printf '%06o\0 ' "$checksum" | dd of="$header" bs=1 seek=148 conv=notrunc status=none
-    padding=$((512 - ${#body}))
+    padding=$(((512 - (${#body} % 512)) % 512))
     {
         cat "$header"
         printf '%s' "$body"
         dd if=/dev/zero bs=1 count="$padding" status=none
-        dd if=/dev/zero bs=512 count=2 status=none
-    } | gzip -c >"$archive"
+    } >>"$archive"
     rm -f "$header"
+}
+
+make_hostile_archive() {
+    local archive="$1"
+    local name="$2"
+    local type="$3"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    if [[ "$name" == fan-control.sh && "$type" != 0 ]]; then
+        append_tar_entry "$raw_archive" "$name" "$type"
+    else
+        append_tar_entry "$raw_archive" fan-control.sh 0 $'#!/bin/bash\n'
+    fi
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    if [[ "$name" != fan-control.sh || "$type" == 0 ]]; then
+        append_tar_entry "$raw_archive" "$name" "$type"
+    fi
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    gzip -c "$raw_archive" >"$archive"
+    rm -f "$raw_archive"
 }
 
 prepare_case() {
@@ -190,6 +222,26 @@ install_environment() {
         bash "$INSTALLER_DIR/install.sh"
 }
 
+install_piped_environment() {
+    (
+        cd "$INSTALLER_DIR"
+        cat install.sh | env \
+            FAN_CONTROL_INSTALL_DIR="$INSTALL_DIR" \
+            FAN_CONTROL_SERVICE_FILE="$SERVICE_FILE" \
+            FAN_CONTROL_SYSTEMCTL=systemctl \
+            FAN_CONTROL_RELEASE_BASE_URL="https://releases.example.invalid/project/releases" \
+            CURL_LOG="$CURL_LOG" \
+            SYSTEMCTL_LOG="$SYSTEMCTL_LOG" \
+            MOCK_ARCHIVE="$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz" \
+            MOCK_SUMS="$CASE_DIR/SHA256SUMS" \
+            MOCK_BRANCH_DIR="$CASE_DIR/branch" \
+            MOCK_LATEST_URL="https://releases.example.invalid/project/releases/tag/v${MOCK_VERSION}" \
+            MOCK_SYSTEMCTL_ACTIVE="${MOCK_SYSTEMCTL_ACTIVE:-after-manage}" \
+            "$@" \
+            bash
+    )
+}
+
 seed_old_install() {
     printf 'old daemon\n' >"$INSTALL_DIR/fan-control.sh"
     printf 'old uninstall\n' >"$INSTALL_DIR/uninstall.sh"
@@ -197,11 +249,15 @@ seed_old_install() {
     printf 'old service\n' >"$SERVICE_FILE"
 }
 
-assert_old_install() {
+assert_old_files() {
     assert_eq "$(cat "$INSTALL_DIR/fan-control.sh")" "old daemon" "daemon changed before validation: "
     assert_eq "$(cat "$INSTALL_DIR/uninstall.sh")" "old uninstall" "uninstall changed before validation: "
     assert_eq "$(cat "$INSTALL_DIR/VERSION")" "old version" "version changed before validation: "
     assert_eq "$(cat "$SERVICE_FILE")" "old service" "service changed before validation: "
+}
+
+assert_old_install() {
+    assert_old_files
     assert_eq "$(cat "$SYSTEMCTL_LOG")" "" "systemctl ran before validation: "
 }
 
@@ -216,7 +272,11 @@ assert_file_set() {
     local file
 
     for file in "${PAYLOAD_FILES[@]}"; do
-        if [[ ! -f "$INSTALL_DIR/$file" ]]; then
+        if [[ "$file" == fan-control.service ]]; then
+            if [[ ! -f "$SERVICE_FILE" ]]; then
+                fail "missing installed payload file: $file"
+            fi
+        elif [[ ! -f "$INSTALL_DIR/$file" ]]; then
             fail "missing installed payload file: $file"
         fi
     done
@@ -244,6 +304,18 @@ test_exact_version_uses_verified_release_urls() {
     assert_file_set
     assert_contains "$(cat "$CURL_LOG")" "/download/v1.2.3/unifi-fan-control-v1.2.3.tar.gz" "version archive URL: "
     assert_contains "$(cat "$CURL_LOG")" "/download/v1.2.3/SHA256SUMS" "version checksum URL: "
+}
+
+test_piped_installer_ignores_cwd_payload() {
+    prepare_case piped
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$INSTALLER_DIR" 9.9.9
+    make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
+
+    install_piped_environment FAN_CONTROL_VERSION="$MOCK_VERSION"
+
+    assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "piped installer version: "
+    assert_contains "$(cat "$CURL_LOG")" "/download/v1.2.3/unifi-fan-control-v1.2.3.tar.gz" "piped release URL: "
 }
 
 test_latest_resolves_a_concrete_verified_release() {
@@ -314,7 +386,7 @@ test_hostile_archives_keep_destination() {
     local name
     local type
 
-    for shape in absolute traversal symlink extra; do
+    for shape in absolute traversal symlink hardlink device directory extra; do
         prepare_case "hostile-$shape"
         MOCK_VERSION=1.2.3
         case "$shape" in
@@ -329,6 +401,18 @@ test_hostile_archives_keep_destination() {
             symlink)
                 name=fan-control.sh
                 type=2
+                ;;
+            hardlink)
+                name=fan-control.sh
+                type=1
+                ;;
+            device)
+                name=fan-control.sh
+                type=3
+                ;;
+            directory)
+                name=fan-control.sh
+                type=5
                 ;;
             extra)
                 name=surprise.sh
@@ -371,8 +455,24 @@ test_verified_release_installs_and_preserves_config() {
     assert_eq "$(cat "$SYSTEMCTL_LOG")" $'is-active --quiet fan-control.service\ndaemon-reload\nenable --now fan-control.service\nis-active --quiet fan-control.service' "systemctl order: "
 }
 
+test_restart_failure_restores_prior_payload() {
+    prepare_case restart-failure
+    MOCK_VERSION=1.2.3
+    make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
+    seed_old_install
+    printf 'MIN_TEMP=48\n' >"$INSTALL_DIR/config"
+
+    if install_environment FAN_CONTROL_VERSION=1.2.3 MOCK_SYSTEMCTL_ACTIVE=1 MOCK_SYSTEMCTL_FAIL=restart; then
+        fail "installer accepted a failed service restart"
+    fi
+
+    assert_old_files
+    assert_eq "$(cat "$INSTALL_DIR/config")" "MIN_TEMP=48" "config changed during rollback: "
+}
+
 test_local_payload_wins_without_curl
 test_exact_version_uses_verified_release_urls
+test_piped_installer_ignores_cwd_payload
 test_latest_resolves_a_concrete_verified_release
 test_branch_install_is_unverified
 test_version_and_branch_fail_before_network
@@ -382,5 +482,6 @@ test_unrelated_checksum_cannot_pass_vacuously
 test_hostile_archives_keep_destination
 test_syntax_failure_keeps_destination
 test_verified_release_installs_and_preserves_config
+test_restart_failure_restores_prior_payload
 
 echo "PASS: verified installer behavior"
