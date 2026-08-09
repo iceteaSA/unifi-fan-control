@@ -4,6 +4,7 @@
 ###############################################################################
 set -euo pipefail
 
+# shellcheck source=tests/lib/harness.sh
 source "$(dirname "$0")/lib/harness.sh"
 
 setup_sandbox
@@ -39,6 +40,7 @@ awk '
 SCRIPT_DIR="$SANDBOX/local"
 export BASE_URL="https://example.invalid/missing-branch"
 mkdir -p "$SCRIPT_DIR"
+# shellcheck source=/dev/null
 source "$function_file"
 
 destination="$SANDBOX/downloaded.sh"

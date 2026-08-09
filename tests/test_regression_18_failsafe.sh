@@ -14,6 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=tests/lib/harness.sh
 source "$SCRIPT_DIR/lib/harness.sh"
 
 # ── 1. Sensor failure → fail-safe forces MAX_PWM ─────────────────────────────
@@ -64,4 +65,5 @@ echo "  ✓ Sensor recovery: fail-safe clears, normal TEMP logs resume"
 stop_daemon
 teardown_sandbox
 
+# shellcheck disable=SC2317
 echo "  All fail-safe regression tests (GH #18) passed."

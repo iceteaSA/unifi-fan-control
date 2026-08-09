@@ -4,6 +4,7 @@
 ###############################################################################
 set -euo pipefail
 
+# shellcheck source=tests/lib/harness.sh
 source "$(dirname "$0")/lib/harness.sh"
 
 eval "$(sed -n '/^calculate_speed()/,/^}/p' "$FAN_CONTROL_SCRIPT")"
@@ -11,11 +12,11 @@ eval "$(sed -n '/^calculate_speed()/,/^}/p' "$FAN_CONTROL_SCRIPT")"
 logger() { :; }
 
 MIN_PWM=91
-MAX_PWM=255
+export MAX_PWM=255
 MIN_TEMP=60
-MAX_TEMP=85
+export MAX_TEMP=85
 HYSTERESIS=5
-FAN_ACTIVATION_TEMP=$((MIN_TEMP + HYSTERESIS))
+export FAN_ACTIVATION_TEMP=$((MIN_TEMP + HYSTERESIS))
 
 assert_eq "$(calculate_speed 60)" "91" "60C should stay at minimum PWM: "
 assert_eq "$(calculate_speed 63)" "91" "63C should stay at minimum PWM: "

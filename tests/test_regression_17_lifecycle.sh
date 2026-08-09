@@ -13,6 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=tests/lib/harness.sh
 source "$SCRIPT_DIR/lib/harness.sh"
 
 # ── 1. Single instance lock: PID file exists with daemon PID while running ───
@@ -74,4 +75,5 @@ echo "  ✓ SIGTERM cleanup: PWM=0, PID file removed"
 
 teardown_sandbox
 
+# shellcheck disable=SC2317
 echo "  All lifecycle regression tests (GH #17) passed."
