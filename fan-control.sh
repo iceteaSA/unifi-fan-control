@@ -478,13 +478,18 @@ LAST_ADJUSTMENT=0    # Timestamp of last PWM optimization
 LAST_AVG_TEMP=0      # Previous temperature (for deadband calculations)
 TEMP_READ_FAILURES=0 # Track consecutive temperature reading failures
 DRIVE_TEMP_AVAILABLE=false
-DRIVE_DEVICE=""
-DRIVE_METHOD=""
+DRIVE_DEVICES=()
+DRIVE_METHODS=()
+DRIVE_READ_FAILURE_LOGGED=()
 DRIVE_TEMP=0
 DRIVE_WARNING_TEMP="unknown"
 DRIVE_PWM_FLOOR=0
+DRIVE_FLOOR_DEVICE=""
+DRIVE_LAST_FLOOR_DEVICE=""
+DRIVE_LAST_FLOOR_TEMP=0
+DRIVE_LAST_FLOOR_PWM=0
 DRIVE_LAST_CHECK=0
-DRIVE_READ_FAILURE_LOGGED=false
+DRIVE_ALL_READ_FAILURE_LOGGED=false
 
 # Function to safely write to a file using atomic operations
 atomic_write_file() {
@@ -653,7 +658,12 @@ read_smartctl_temperature() {
     local raw_temp
     local warning_temp
 
-    smart_log=$(smartctl -j -a "$device" 2>/dev/null) || return 1
+    if [[ "$device" == "$DRIVE_DEV_DIR"/sd? ]]; then
+        # SMART standby mode preserves disk spindown; an idle disk cannot add heat.
+        smart_log=$(smartctl -n standby -j -a "$device" 2>/dev/null) || return 1
+    else
+        smart_log=$(smartctl -j -a "$device" 2>/dev/null) || return 1
+    fi
     raw_temp=$(json_number "$smart_log" "current")
     [[ "$raw_temp" =~ ^[0-9]+$ ]] || return 1
     ((raw_temp >= 0 && raw_temp <= 120)) || return 1
@@ -683,43 +693,64 @@ detect_drive_temperature() {
     local device
     local device_found=false
     local warning_temp_display
+    local method
+    local hottest_index=-1
+    local index
 
     [[ "$DRIVE_TEMP_ENABLED" != "false" ]] || return
 
     for device in "$DRIVE_DEV_DIR"/nvme?n? "$DRIVE_DEV_DIR"/sd?; do
         [[ -e "$device" ]] || continue
         device_found=true
+        method=""
 
-        if read_nvme_temperature "$device"; then
-            DRIVE_DEVICE=$device
-            DRIVE_METHOD="nvme"
+        if [[ "$device" == "$DRIVE_DEV_DIR"/nvme?n? ]]; then
+            if read_nvme_temperature "$device"; then
+                method="nvme"
+            elif read_smartctl_temperature "$device"; then
+                method="smartctl"
+            fi
         elif read_smartctl_temperature "$device"; then
-            DRIVE_DEVICE=$device
-            DRIVE_METHOD="smartctl"
-        else
-            continue
+            method="smartctl"
         fi
 
-        DRIVE_TEMP_AVAILABLE=true
-        DRIVE_TEMP=$DRIVE_READ_TEMP
-        calculate_drive_pwm_floor
-        DRIVE_LAST_CHECK=$(date +%s)
+        [[ -n "$method" ]] || continue
+
+        DRIVE_DEVICES+=("$device")
+        DRIVE_METHODS+=("$method")
+        DRIVE_READ_FAILURE_LOGGED+=(false)
+        index=$((${#DRIVE_DEVICES[@]} - 1))
         warning_temp_display="not reported"
         if [[ "$DRIVE_WARNING_TEMP" =~ ^[0-9]+$ ]]; then
             warning_temp_display="${DRIVE_WARNING_TEMP}°C"
         fi
-        logger -t fan-control "DRIVE: Detected ${DRIVE_DEVICE} via ${DRIVE_METHOD} | Temp=${DRIVE_TEMP}°C | wctemp=${warning_temp_display}"
-        return
+        logger -t fan-control "DRIVE: Detected ${device} via ${method} | Temp=${DRIVE_READ_TEMP}°C | wctemp=${warning_temp_display}"
+
+        if ((hottest_index < 0 || DRIVE_READ_TEMP > DRIVE_TEMP)); then
+            hottest_index=$index
+            DRIVE_TEMP=$DRIVE_READ_TEMP
+        fi
     done
 
-    if [[ "$device_found" = true ]]; then
+    if ((hottest_index >= 0)); then
+        DRIVE_TEMP_AVAILABLE=true
+        DRIVE_FLOOR_DEVICE="${DRIVE_DEVICES[$hottest_index]}"
+        calculate_drive_pwm_floor
+        DRIVE_LAST_CHECK=$(date +%s)
+        DRIVE_LAST_FLOOR_DEVICE=$DRIVE_FLOOR_DEVICE
+        DRIVE_LAST_FLOOR_TEMP=$DRIVE_TEMP
+        DRIVE_LAST_FLOOR_PWM=$DRIVE_PWM_FLOOR
+        logger -t fan-control "DRIVE: ${DRIVE_FLOOR_DEVICE} drives floor | Temp=${DRIVE_TEMP}°C | Floor=${DRIVE_PWM_FLOOR}pwm"
+    elif [[ "$device_found" = true ]]; then
         logger -t fan-control "DRIVE: No readable drive temperature source found; feature disabled"
     fi
 }
 
 update_drive_temperature() {
     local now
+    local index
     local read_ok=false
+    local hottest_index=-1
 
     [[ "$DRIVE_TEMP_AVAILABLE" = true ]] || return
     now=$(date +%s)
@@ -728,25 +759,52 @@ update_drive_temperature() {
     fi
     DRIVE_LAST_CHECK=$now
 
-    if [[ "$DRIVE_METHOD" = "nvme" ]]; then
-        if read_nvme_temperature "$DRIVE_DEVICE"; then
-            read_ok=true
+    for index in "${!DRIVE_DEVICES[@]}"; do
+        if [[ "${DRIVE_METHODS[$index]}" = "nvme" ]]; then
+            if read_nvme_temperature "${DRIVE_DEVICES[$index]}"; then
+                read_ok=true
+            fi
         fi
-    else
-        if read_smartctl_temperature "$DRIVE_DEVICE"; then
-            read_ok=true
-        fi
-    fi
 
-    if [[ "$read_ok" = true ]]; then
-        DRIVE_TEMP=$DRIVE_READ_TEMP
+        if [[ "${DRIVE_METHODS[$index]}" = "smartctl" ]]; then
+            if read_smartctl_temperature "${DRIVE_DEVICES[$index]}"; then
+                read_ok=true
+            fi
+        fi
+
+        if [[ "$read_ok" = true ]]; then
+            if [[ "${DRIVE_READ_FAILURE_LOGGED[$index]}" = true ]]; then
+                logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} read recovered"
+            fi
+            DRIVE_READ_FAILURE_LOGGED[index]=false
+
+            if ((hottest_index < 0 || DRIVE_READ_TEMP > DRIVE_TEMP)); then
+                hottest_index=$index
+                DRIVE_TEMP=$DRIVE_READ_TEMP
+            fi
+            read_ok=false
+        elif [[ "${DRIVE_READ_FAILURE_LOGGED[$index]}" = false ]]; then
+            logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} read failed; excluding it from floor"
+            DRIVE_READ_FAILURE_LOGGED[index]=true
+        fi
+    done
+
+    if ((hottest_index >= 0)); then
+        DRIVE_FLOOR_DEVICE="${DRIVE_DEVICES[$hottest_index]}"
         calculate_drive_pwm_floor
-        DRIVE_READ_FAILURE_LOGGED=false
+        DRIVE_ALL_READ_FAILURE_LOGGED=false
+        if [[ "$DRIVE_FLOOR_DEVICE" != "$DRIVE_LAST_FLOOR_DEVICE" || "$DRIVE_TEMP" -ne "$DRIVE_LAST_FLOOR_TEMP" || "$DRIVE_PWM_FLOOR" -ne "$DRIVE_LAST_FLOOR_PWM" ]]; then
+            logger -t fan-control "DRIVE: ${DRIVE_FLOOR_DEVICE} drives floor | Temp=${DRIVE_TEMP}°C | Floor=${DRIVE_PWM_FLOOR}pwm"
+            DRIVE_LAST_FLOOR_DEVICE=$DRIVE_FLOOR_DEVICE
+            DRIVE_LAST_FLOOR_TEMP=$DRIVE_TEMP
+            DRIVE_LAST_FLOOR_PWM=$DRIVE_PWM_FLOOR
+        fi
     else
         DRIVE_PWM_FLOOR=0
-        if [[ "$DRIVE_READ_FAILURE_LOGGED" = false ]]; then
-            logger -t fan-control "DRIVE: ${DRIVE_DEVICE} read failed; floor disabled"
-            DRIVE_READ_FAILURE_LOGGED=true
+        DRIVE_FLOOR_DEVICE=""
+        if [[ "$DRIVE_ALL_READ_FAILURE_LOGGED" = false ]]; then
+            logger -t fan-control "DRIVE: All cached drives unreadable; floor disabled"
+            DRIVE_ALL_READ_FAILURE_LOGGED=true
         fi
     fi
 }
