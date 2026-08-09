@@ -481,10 +481,8 @@ DRIVE_TEMP_AVAILABLE=false
 DRIVE_DEVICES=()
 DRIVE_METHODS=()
 DRIVE_READ_FAILURE_LOGGED=()
-DRIVE_STANDBY_LOGGED=()
 DRIVE_TEMP=0
 DRIVE_WARNING_TEMP="unknown"
-DRIVE_READ_STATE="failed"
 DRIVE_PWM_FLOOR=0
 DRIVE_FLOOR_DEVICE=""
 DRIVE_LAST_FLOOR_DEVICE=""
@@ -634,7 +632,6 @@ read_nvme_temperature() {
     local controller
     local warning_temp
 
-    DRIVE_READ_STATE="failed"
     smart_log=$(nvme smart-log -o json "$device" 2>/dev/null) || return 1
     raw_temp=$(json_number "$smart_log" "temperature")
     [[ "$raw_temp" =~ ^[0-9]+$ ]] || return 1
@@ -653,7 +650,6 @@ read_nvme_temperature() {
     else
         DRIVE_WARNING_TEMP="unknown"
     fi
-    DRIVE_READ_STATE="readable"
 }
 
 read_smartctl_temperature() {
@@ -661,22 +657,8 @@ read_smartctl_temperature() {
     local smart_log
     local raw_temp
     local warning_temp
-    local smartctl_status
 
-    DRIVE_READ_STATE="failed"
-    if [[ "$device" == "$DRIVE_DEV_DIR"/sd? ]]; then
-        # smartctl's standby exit is an expected idle state, not a broken thermal input.
-        if smart_log=$(smartctl -n standby -j -a "$device" 2>/dev/null); then
-            :
-        else
-            smartctl_status=$?
-            if ((smartctl_status == 2)); then
-                DRIVE_READ_STATE="asleep"
-                return 2
-            fi
-            return 1
-        fi
-    elif ! smart_log=$(smartctl -j -a "$device" 2>/dev/null); then
+    if ! smart_log=$(smartctl -j -a "$device" 2>/dev/null); then
         return 1
     fi
     raw_temp=$(json_number "$smart_log" "current")
@@ -690,7 +672,6 @@ read_smartctl_temperature() {
     else
         DRIVE_WARNING_TEMP="unknown"
     fi
-    DRIVE_READ_STATE="readable"
 }
 
 calculate_drive_pwm_floor() {
@@ -712,6 +693,7 @@ detect_drive_temperature() {
     local method
     local hottest_index=-1
     local index
+    local drive_read_ok
 
     [[ "$DRIVE_TEMP_ENABLED" != "false" ]] || return
 
@@ -719,24 +701,25 @@ detect_drive_temperature() {
         [[ -e "$device" ]] || continue
         device_found=true
         method="smartctl"
+        drive_read_ok=false
 
         if [[ "$device" == "$DRIVE_DEV_DIR"/nvme?n? ]]; then
             method="nvme"
             if read_nvme_temperature "$device"; then
-                :
+                drive_read_ok=true
             elif read_smartctl_temperature "$device"; then
                 method="smartctl"
+                drive_read_ok=true
             fi
-        else
-            read_smartctl_temperature "$device" || true
+        elif read_smartctl_temperature "$device"; then
+            drive_read_ok=true
         fi
 
         DRIVE_DEVICES+=("$device")
         DRIVE_METHODS+=("$method")
         DRIVE_READ_FAILURE_LOGGED+=(false)
-        DRIVE_STANDBY_LOGGED+=(false)
         index=$((${#DRIVE_DEVICES[@]} - 1))
-        if [[ "$DRIVE_READ_STATE" = "readable" ]]; then
+        if [[ "$drive_read_ok" = true ]]; then
             warning_temp_display="not reported"
             if [[ "$DRIVE_WARNING_TEMP" =~ ^[0-9]+$ ]]; then
                 warning_temp_display="${DRIVE_WARNING_TEMP}°C"
@@ -747,9 +730,6 @@ detect_drive_temperature() {
                 hottest_index=$index
                 DRIVE_TEMP=$DRIVE_READ_TEMP
             fi
-        elif [[ "$DRIVE_READ_STATE" = "asleep" ]]; then
-            logger -t fan-control "DRIVE: ${device} is asleep; excluded from floor"
-            DRIVE_STANDBY_LOGGED[index]=true
         else
             logger -t fan-control "DRIVE: ${device} read failed; excluding it from floor"
             DRIVE_READ_FAILURE_LOGGED[index]=true
@@ -776,8 +756,6 @@ update_drive_temperature() {
     local index
     local drive_read_ok=false
     local hottest_index=-1
-    local any_asleep=false
-    local any_failed=false
 
     [[ "$DRIVE_TEMP_AVAILABLE" = true ]] || return
     now=$(date +%s)
@@ -801,28 +779,16 @@ update_drive_temperature() {
         fi
 
         if [[ "$drive_read_ok" = true ]]; then
-            if [[ "${DRIVE_STANDBY_LOGGED[$index]}" = true ]]; then
-                logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} woke; included in floor"
-            elif [[ "${DRIVE_READ_FAILURE_LOGGED[$index]}" = true ]]; then
+            if [[ "${DRIVE_READ_FAILURE_LOGGED[$index]}" = true ]]; then
                 logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} read recovered"
             fi
             DRIVE_READ_FAILURE_LOGGED[index]=false
-            DRIVE_STANDBY_LOGGED[index]=false
 
             if ((hottest_index < 0 || DRIVE_READ_TEMP > DRIVE_TEMP)); then
                 hottest_index=$index
                 DRIVE_TEMP=$DRIVE_READ_TEMP
             fi
-        elif [[ "$DRIVE_READ_STATE" = "asleep" ]]; then
-            any_asleep=true
-            DRIVE_READ_FAILURE_LOGGED[index]=false
-            if [[ "${DRIVE_STANDBY_LOGGED[$index]}" = false ]]; then
-                logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} is asleep; excluded from floor"
-                DRIVE_STANDBY_LOGGED[index]=true
-            fi
         else
-            any_failed=true
-            DRIVE_STANDBY_LOGGED[index]=false
             if [[ "${DRIVE_READ_FAILURE_LOGGED[$index]}" = false ]]; then
                 logger -t fan-control "DRIVE: ${DRIVE_DEVICES[$index]} read failed; excluding it from floor"
                 DRIVE_READ_FAILURE_LOGGED[index]=true
@@ -843,11 +809,9 @@ update_drive_temperature() {
     else
         DRIVE_PWM_FLOOR=0
         DRIVE_FLOOR_DEVICE=""
-        if [[ "$any_failed" = true && "$any_asleep" = false && "$DRIVE_ALL_READ_FAILURE_LOGGED" = false ]]; then
+        if [[ "$DRIVE_ALL_READ_FAILURE_LOGGED" = false ]]; then
             logger -t fan-control "DRIVE: All cached drives unreadable; floor disabled"
             DRIVE_ALL_READ_FAILURE_LOGGED=true
-        elif [[ "$any_asleep" = true ]]; then
-            DRIVE_ALL_READ_FAILURE_LOGGED=false
         fi
     fi
 }
