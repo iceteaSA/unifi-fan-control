@@ -25,7 +25,7 @@ reset_ok=false
 for pwm_file in /sys/class/hwmon/hwmon*/pwm[1-9]; do
     if [ -e "$pwm_file" ]; then
         echo "Resetting $pwm_file to 0..."
-        echo 0 > "$pwm_file" 2>/dev/null && reset_ok=true
+        echo 0 >"$pwm_file" 2>/dev/null && reset_ok=true
     fi
 done
 
@@ -36,7 +36,7 @@ if [ "$reset_ok" = false ]; then
         for pwm_file in "$dev_path"/pwm[1-9]; do
             if [ -e "$pwm_file" ]; then
                 echo "Resetting $pwm_file to 0..."
-                echo 0 > "$pwm_file" 2>/dev/null && reset_ok=true
+                echo 0 >"$pwm_file" 2>/dev/null && reset_ok=true
             fi
         done
     done

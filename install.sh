@@ -22,7 +22,7 @@ fi
 # Repository information
 REPO_OWNER="iceteaSA"
 REPO_NAME="unifi-fan-control"
-BRANCH="${FAN_CONTROL_BRANCH:-main}"  # Use environment variable if set, otherwise default to main
+BRANCH="${FAN_CONTROL_BRANCH:-main}" # Use environment variable if set, otherwise default to main
 BASE_URL="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/$BRANCH"
 
 echo "Installing from branch: $BRANCH"
@@ -53,8 +53,7 @@ get_file() {
         cp "$SCRIPT_DIR/$filename" "$destination"
     else
         echo "Downloading $filename from repository..."
-        curl -sSL "$BASE_URL/$filename" -o "$destination"
-        if [ $? -ne 0 ]; then
+        if ! curl -fsSL "$BASE_URL/$filename" -o "$destination"; then
             echo "Error: Failed to download $filename"
             exit 1
         fi

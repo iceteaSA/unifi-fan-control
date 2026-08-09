@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=tests/lib/harness.sh
 source "$SCRIPT_DIR/lib/harness.sh"
 trap teardown_sandbox EXIT
 
@@ -14,7 +15,7 @@ declare -i scenario=0
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo "45" > "$SANDBOX/cputemp"
+echo "45" >"$SANDBOX/cputemp"
 rm -f "$SANDBOX/config"
 
 start_daemon
@@ -40,10 +41,10 @@ cleanup_sandbox
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo "45" > "$SANDBOX/cputemp"
+echo "45" >"$SANDBOX/cputemp"
 
 # Pre-create a valid config but with MIN_TEMP=999 (out of valid range 30-80)
-cat > "$SANDBOX/config" <<EOF
+cat >"$SANDBOX/config" <<EOF
 MIN_PWM=91
 MAX_PWM=255
 MIN_TEMP=999
@@ -75,10 +76,10 @@ cleanup_sandbox
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo "45" > "$SANDBOX/cputemp"
+echo "45" >"$SANDBOX/cputemp"
 
 # Pre-create a config missing DEADBAND and LEARNING_RATE
-cat > "$SANDBOX/config" <<EOF
+cat >"$SANDBOX/config" <<EOF
 MIN_PWM=91
 MAX_PWM=255
 MIN_TEMP=60
