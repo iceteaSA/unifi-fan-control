@@ -4,6 +4,11 @@ Advanced temperature management for Ubiquiti UniFi OS devices with fan control.
 
 Confirmed working on: UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, UNVR
 
+**Not supported: UniFi switches (USW line).** They run BusyBox `sh` with no bash, no
+`ubnt-systool` for temperature, and no systemd — and their fans are generally firmware
+controlled rather than exposed as writable `/sys/class/hwmon/*/pwm*`. This needs consoles
+and gateways running full UniFi OS.
+
 > This project is built and maintained independently. If it keeps your UniFi gear cool and quiet, [consider supporting it](https://ko-fi.com/H2H719VB0U).
 
 ## Features
@@ -238,6 +243,42 @@ systemctl restart fan-control.service  # Apply config changes
 # Full Removal
 /data/fan-control/uninstall.sh
 ```
+
+### Which version am I running?
+
+```bash
+cat /data/fan-control/VERSION
+journalctl -u fan-control.service | grep starting | tail -1
+# CONFIG: fan-control v1.1.1 starting
+```
+
+Neither prints anything on builds older than v1.0.0 — those predate version identity.
+
+### Updating
+
+Re-run the installer. There is no auto-update: this runs as root, and a self-updating
+root daemon is a large attack surface for a fan controller.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+```
+
+**Your config is preserved.** `/data/fan-control/config` is never overwritten by an
+install or upgrade — only the scripts and the service unit are replaced. No backup step
+is needed.
+
+### Does it survive a UniFi OS update?
+
+A normal firmware update, yes. A factory reset, no.
+
+UniFi OS runs root as an overlay: the firmware is a read-only lower layer, and anything
+you install lands in the upper layer. Both halves of this install live there — the
+systemd unit and `/data/fan-control` — so they share one fate. A firmware update swaps
+the lower layer and leaves the upper alone.
+
+What does remove it: factory reset, `reset2defaults`, re-adoption, or any recovery flow
+that rebuilds the overlay. If the service disappears and other things you installed went
+with it, that was the overlay rather than this script. Reinstall with the one-liner above.
 
 ## Project Structure
 - **fan-control.sh**: The main script that monitors temperature and controls fan speed
