@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - name: Install lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck shfmt jq
+      - name: Bash syntax
+        shell: bash
+        run: |
+          mapfile -t shell_files < <(git ls-files '*.sh')
+          bash -n "${shell_files[@]}"
+      - name: ShellCheck baseline
+        shell: bash
+        run: |
+          mapfile -t shell_files < <(git ls-files '*.sh')
+          set +e
+          shellcheck -f json1 "${shell_files[@]}" > /tmp/shellcheck.json
+          shellcheck_status=$?
+          set -e
+          if (( shellcheck_status > 1 )); then
+              exit "$shellcheck_status"
+          fi
+          jq -r '.comments[] | [.file, ("SC" + (.code | tostring)), .level, .message] | @tsv' /tmp/shellcheck.json \
+            | LC_ALL=C sort > /tmp/shellcheck-current.tsv
+          diff -u .github/shellcheck-baseline.tsv /tmp/shellcheck-current.tsv
+      # Task 7 activates the hard shfmt gate after the Phase 2 reformat.
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bash-4.4-mawk
+            image: bash:4.4
+          - target: bash-5.1-mawk
+            image: bash:5.1
+          - target: bash-5.2-mawk
+            image: bash:5.2
+          - target: ubuntu-native-mawk
+            image: native
+    name: test (${{ matrix.target }})
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - name: Test in official Bash image
+        if: matrix.image != 'native'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            "${{ matrix.image }}" \
+            sh -ec 'apk add --no-cache mawk; mawk -W version; bash --version | head -n 1; bash tests/run-tests.sh'
+      - name: Test on native runner with mawk
+        if: matrix.image == 'native'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mawk
+          sudo update-alternatives --set awk /usr/bin/mawk
+          mawk -W version
+          bash --version | head -n 1
+          bash tests/run-tests.sh
