@@ -408,6 +408,27 @@ files unchanged. Check the installed identity with:
 cat /data/fan-control/VERSION
 ```
 
+### DNS Failure Resolving `release-assets.githubusercontent.com`
+
+GitHub redirects release downloads from `github.com` to
+`release-assets.githubusercontent.com`. A verified install needs both names to
+resolve. If the installer names `release-assets.githubusercontent.com`, fix the
+device's resolver, DNS filter, or stale cache. The installer and release are not
+the cause.
+
+The installer also checks `raw.githubusercontent.com` and reports whether it is
+reachable. If it is reachable and the resolver cannot be fixed immediately, use
+the exact tag from the error message to opt in to the fallback:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
+```
+
+This is a deliberate one-install exception. It downloads tagged files from
+`raw.githubusercontent.com` and skips SHA256 verification; it does not weaken the
+file-size, syntax, or payload validation checks. Fixing DNS and using the verified
+release path remains the right fix.
+
 ### Branch-Specific Installation Fails
 
 **Issue**: Can't install from a specific branch

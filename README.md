@@ -55,6 +55,26 @@ curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/ins
 `FAN_CONTROL_VERSION` accepts `v1.2.0` or `1.2.0`. Pinned installs verify the
 matching release tarball before replacing installed files.
 
+### Release Download DNS Failures
+
+GitHub redirects verified release downloads from `github.com` to
+`release-assets.githubusercontent.com`. Both names must resolve. If the installer
+names `release-assets.githubusercontent.com`, fix the device's DNS resolver or
+allow that host first. That is a resolver failure, not a broken installer or
+release.
+
+If the installer reports that `raw.githubusercontent.com` is reachable and the
+resolver cannot be fixed immediately, a one-time fallback is available for one
+specific tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
+```
+
+This bypasses SHA256 verification for that install. It still validates the
+downloaded files before writing them, but it is not the normal or preferred path.
+`FAN_CONTROL_ALLOW_UNVERIFIED` must exactly match the tag being installed.
+
 ### Using a Different Branch
 For development builds:
 

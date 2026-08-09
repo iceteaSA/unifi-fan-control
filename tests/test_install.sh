@@ -73,9 +73,33 @@ while (($# > 0)); do
     esac
 done
 
-if [[ "${MOCK_CURL_FAIL:-0}" == 1 ]]; then
-    exit 22
-fi
+    case "${MOCK_CURL_FAIL:-}" in
+        1)
+            exit 22
+            ;;
+        asset-dns)
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (6) Could not resolve host: release-assets.githubusercontent.com" >&2
+                exit 6
+            fi
+            ;;
+        fallback-timeout)
+            if [[ "$url" == *raw.githubusercontent.com/* ]]; then
+                echo "curl: (28) Connection timed out after 10001 milliseconds" >&2
+                exit 28
+            fi
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (6) Could not resolve host: release-assets.githubusercontent.com" >&2
+                exit 6
+            fi
+            ;;
+        archive-http)
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (22) The requested URL returned error: 404" >&2
+                exit 22
+            fi
+            ;;
+    esac
 
 if [[ -n "$write_format" ]]; then
     printf '%s' "${MOCK_LATEST_URL:?missing latest redirect URL}"
@@ -151,7 +175,8 @@ append_tar_entry() {
     local name="$2"
     local type="$3"
     local header="$archive.header"
-    local body="${4:-payload}"
+    local body="${4-payload}"
+    local size_mode="${5:-normal}"
     local checksum
     local padding
 
@@ -163,7 +188,11 @@ append_tar_entry() {
     printf '0000644\0' | dd of="$header" bs=1 seek=100 conv=notrunc status=none
     printf '0000000\0' | dd of="$header" bs=1 seek=108 conv=notrunc status=none
     printf '0000000\0' | dd of="$header" bs=1 seek=116 conv=notrunc status=none
-    printf '%011o\0' "${#body}" | dd of="$header" bs=1 seek=124 conv=notrunc status=none
+    if [[ "$size_mode" == empty ]]; then
+        dd if=/dev/zero of="$header" bs=1 seek=124 count=12 conv=notrunc status=none
+    else
+        printf '%011o\0' "${#body}" | dd of="$header" bs=1 seek=124 conv=notrunc status=none
+    fi
     printf '%011o\0' 0 | dd of="$header" bs=1 seek=136 conv=notrunc status=none
     printf '        ' | dd of="$header" bs=1 seek=148 conv=notrunc status=none
     printf '%s' "$type" | dd of="$header" bs=1 seek=156 conv=notrunc status=none
@@ -185,6 +214,98 @@ append_tar_entry() {
         dd if=/dev/zero bs=1 count="$padding" status=none
     } >>"$archive"
     rm -f "$header"
+}
+
+write_archive_checksum() {
+    local archive="$1"
+    local checksum
+
+    checksum=$(sha256sum "$archive" | awk '{print $1}')
+    printf '%s  unifi-fan-control-v%s.tar.gz\n' "$checksum" "$MOCK_VERSION" >"$CASE_DIR/SHA256SUMS"
+}
+
+compress_raw_archive() {
+    local raw_archive="$1"
+    local archive="$2"
+
+    gzip -c "$raw_archive" >"$archive"
+    rm -f "$raw_archive"
+    write_archive_checksum "$archive"
+}
+
+make_handbuilt_release_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+make_lone_zero_block_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    dd if=/dev/zero bs=512 count=1 status=none >>"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 2
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+make_empty_size_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 0 "" empty
+    append_tar_entry "$raw_archive" ignored 0 ""
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+stub_tar_for_header_walk() {
+    local real_tar
+
+    real_tar=$(command -v tar)
+    cat >"$SANDBOX/bin/tar" <<STUB
+#!/usr/bin/env bash
+if [[ "\$1" == "-tzf" ]]; then
+    printf '%s\n' fan-control.sh uninstall.sh fan-control.service VERSION
+    exit 0
+fi
+if [[ "\$1" == "-xzf" ]]; then
+    while (( \$# > 0 )); do
+        case "\$1" in
+            -C)
+                payload_dir="\$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    mkdir -p "\$payload_dir"
+    printf '#!/bin/bash\n' >"\$payload_dir/fan-control.sh"
+    printf '#!/bin/bash\n' >"\$payload_dir/uninstall.sh"
+    printf '[Unit]\n' >"\$payload_dir/fan-control.service"
+    printf '%s\n' "$MOCK_VERSION" >"\$payload_dir/VERSION"
+    exit 0
+fi
+exec "$real_tar" "\$@"
+STUB
+    chmod +x "$SANDBOX/bin/tar"
 }
 
 make_hostile_archive() {
@@ -296,6 +417,16 @@ assert_failed_install_keeps_destination() {
     assert_old_install
 }
 
+assert_failed_install_output() {
+    local output
+
+    if output=$(install_environment "$@" 2>&1); then
+        fail "installer accepted invalid input"
+    fi
+    assert_old_install
+    printf '%s\n' "$output"
+}
+
 assert_file_set() {
     local file
 
@@ -390,6 +521,105 @@ test_curl_failure_keeps_destination() {
     assert_failed_install_keeps_destination FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=1
 }
 
+test_asset_host_dns_failure_explains_the_redirect() {
+    prepare_case asset-host-dns
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=asset-dns)
+
+    assert_contains "$output" "DNS lookup failed for release-assets.githubusercontent.com" "DNS host diagnosis: "
+    assert_contains "$output" "GitHub redirects release downloads to release-assets.githubusercontent.com" "redirect diagnosis: "
+    assert_contains "$output" "resolver problem, not a fault in the installer or release" "resolver diagnosis: "
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com is reachable for v1.2.3" "fallback reachability: "
+    assert_contains "$output" "curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 bash" "consent command: "
+}
+
+test_http_release_failure_does_not_blame_dns() {
+    prepare_case archive-http
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=archive-http)
+
+    assert_contains "$output" "HTTP error 404 while downloading release v1.2.3" "HTTP diagnosis: "
+    assert_contains "$output" "This is not a DNS resolution failure" "non-DNS diagnosis: "
+    if [[ "$output" == *"resolver problem"* ]]; then
+        fail "HTTP failure was blamed on the resolver: $output"
+    fi
+}
+
+test_unverified_consent_installs_the_failed_release() {
+    prepare_case unverified-consent
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+
+    output=$(install_environment FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 MOCK_CURL_FAIL=asset-dns 2>&1)
+
+    assert_file_set
+    assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "unverified release version: "
+    assert_contains "$output" "WARNING: SHA256 verification will be skipped for release v1.2.3" "pre-install warning: "
+    assert_contains "$output" "WARNING: Installed v1.2.3 without SHA256 verification" "post-install warning: "
+    assert_contains "$(cat "$CURL_LOG")" "raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/fan-control.sh" "unverified release URL: "
+}
+
+test_unverified_consent_still_validates_the_payload() {
+    prepare_case unverified-validation
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    printf 'if then\n' >"$CASE_DIR/branch/fan-control.sh"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 MOCK_CURL_FAIL=asset-dns)
+
+    assert_contains "$output" "Payload scripts failed syntax validation" "unverified payload validation: "
+}
+
+test_unverified_consent_must_match_the_release_tag() {
+    prepare_case unverified-wrong-tag
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.4)
+
+    assert_contains "$output" "FAN_CONTROL_ALLOW_UNVERIFIED must match requested release tag: v1.2.3" "tag mismatch: "
+    assert_eq "$(cat "$CURL_LOG")" "" "tag mismatch made a network call: "
+}
+
+test_unverified_consent_must_name_a_release_tag() {
+    prepare_case unverified-invalid-tag
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=1)
+
+    assert_contains "$output" "FAN_CONTROL_ALLOW_UNVERIFIED must name a release tag" "tag format: "
+    assert_eq "$(cat "$CURL_LOG")" "" "invalid tag made a network call: "
+}
+
+test_unverified_fallback_reports_when_the_host_is_unreachable() {
+    prepare_case fallback-timeout
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=fallback-timeout)
+
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com is not reachable for v1.2.3 (curl exit 28)" "fallback timeout: "
+}
+
+test_unverified_fallback_separates_http_failure_from_reachability() {
+    prepare_case fallback-http
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=1)
+
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com responded, but the VERSION request failed (curl exit 22)" "fallback HTTP response: "
+}
+
 test_checksum_mismatch_keeps_destination() {
     prepare_case checksum-mismatch
     MOCK_VERSION=1.2.3
@@ -457,6 +687,45 @@ test_hostile_archives_keep_destination() {
     done
 }
 
+test_lone_zero_block_is_rejected_by_header_walk() {
+    local output
+
+    prepare_case lone-zero-block
+    MOCK_VERSION=1.2.3
+    make_lone_zero_block_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+    seed_old_install
+
+    stub_tar_for_header_walk
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3)
+    rm -f "$SANDBOX/bin/tar"
+    assert_contains "$output" "Release archive has a malformed end marker" "lone zero block rejection: "
+}
+
+test_empty_size_field_is_rejected_by_header_walk() {
+    local output
+
+    prepare_case empty-size-field
+    MOCK_VERSION=1.2.3
+    make_empty_size_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+    seed_old_install
+
+    stub_tar_for_header_walk
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3)
+    rm -f "$SANDBOX/bin/tar"
+    assert_contains "$output" "Release archive has an invalid entry size" "empty size field rejection: "
+}
+
+test_handbuilt_well_formed_archive_installs() {
+    prepare_case handbuilt-archive
+    MOCK_VERSION=1.2.3
+    make_handbuilt_release_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+
+    install_environment FAN_CONTROL_VERSION=1.2.3 >/dev/null
+
+    assert_file_set
+    assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "handbuilt archive version: "
+}
+
 test_syntax_failure_keeps_destination() {
     prepare_case syntax-failure
     MOCK_VERSION=1.2.3
@@ -498,7 +767,7 @@ test_verified_release_installs_and_preserves_config() {
     make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
     printf 'MIN_TEMP=48\n' >"$INSTALL_DIR/config"
 
-    install_environment FAN_CONTROL_VERSION=1.2.3
+    output=$(install_environment FAN_CONTROL_VERSION=1.2.3)
 
     assert_file_set
     assert_eq "$(stat -c%a "$INSTALL_DIR")" "700" "install directory mode: "
@@ -506,6 +775,7 @@ test_verified_release_installs_and_preserves_config() {
     assert_eq "$(cat "$INSTALL_DIR/config")" "MIN_TEMP=48" "config preservation: "
     assert_eq "$(stat -c%a "$INSTALL_DIR/config")" "600" "installed config mode: "
     assert_eq "$(cat "$SYSTEMCTL_LOG")" $'is-active --quiet fan-control.service\ndaemon-reload\nenable --now fan-control.service\nis-active --quiet fan-control.service' "systemctl order: "
+    assert_eq "$output" $'Installing fan-control v1.2.3 from verified release v1.2.3\nPerforming fresh installation\nInstallation successful!\nConfiguration: nano '"$INSTALL_DIR"$'/config\nStatus check: journalctl -u fan-control.service -f' "verified release output: "
 }
 
 test_restart_failure_restores_prior_payload() {
@@ -530,9 +800,20 @@ test_latest_resolves_a_concrete_verified_release
 test_branch_install_is_unverified
 test_version_and_branch_fail_before_network
 test_curl_failure_keeps_destination
+test_asset_host_dns_failure_explains_the_redirect
+test_http_release_failure_does_not_blame_dns
+test_unverified_consent_installs_the_failed_release
+test_unverified_consent_still_validates_the_payload
+test_unverified_consent_must_match_the_release_tag
+test_unverified_consent_must_name_a_release_tag
+test_unverified_fallback_reports_when_the_host_is_unreachable
+test_unverified_fallback_separates_http_failure_from_reachability
 test_checksum_mismatch_keeps_destination
 test_unrelated_checksum_cannot_pass_vacuously
 test_hostile_archives_keep_destination
+test_lone_zero_block_is_rejected_by_header_walk
+test_empty_size_field_is_rejected_by_header_walk
+test_handbuilt_well_formed_archive_installs
 test_syntax_failure_keeps_destination
 test_oversized_payload_keeps_destination
 test_oversized_expansion_keeps_destination
