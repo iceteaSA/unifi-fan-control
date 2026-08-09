@@ -100,6 +100,11 @@ When making changes, test the following scenarios:
 4. **Configuration changes**: Verify config reload works
 5. **Error conditions**: Test sensor failures, invalid configs, etc.
 6. **Long-term stability**: Run for several hours/days if possible
+7. **Installer release path**: Verify a pinned release, checksum failure, unsafe archive, and service-restart rollback in the sandbox suite
+
+For installer changes, run `bash tests/test_install.sh` before the full suite.
+It covers local files, pinned and latest release selection, unverified branch
+installs, archive validation, and rollback behavior without root or a device.
 
 ### Documentation
 

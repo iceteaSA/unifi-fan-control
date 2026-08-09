@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Tagged release automation with verified runtime tarballs and `SHA256SUMS`.
+- Verified release installation with latest-release resolution and
+  `FAN_CONTROL_VERSION` pinning.
+- Archive allowlist, checksum, syntax, and rollback validation before installer
+  files replace the running deployment.
 - `VERSION` identity file and startup logging for the deployed daemon version.
 - Test suite (`tests/`) — sandboxed, no-root, dependency-free bash tests covering config bootstrap, PWM detection, state machine, and regression tests for #17 and #18.
 - Env-var seams for testability: `FAN_CONTROL_CONFIG_FILE`, `FAN_CONTROL_TEMP_STATE_FILE`, `FAN_CONTROL_PID_FILE`, `FAN_CONTROL_OPTIMAL_PWM_FILE`, `FAN_CONTROL_HWMON_BASE`.

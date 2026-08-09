@@ -365,25 +365,37 @@ cat /data/fan-control/config
    ls -la /data
 
    # May need to create /data if it doesn't exist (unusual)
-   sudo mkdir -p /data
-   ```
+    sudo mkdir -p /data
+    ```
+
+### Release Download or Checksum Failure
+
+The default installer uses the latest tagged release. To retry a known release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
+```
+
+The installer verifies the downloaded tarball against the matching
+`SHA256SUMS`. A checksum or archive validation failure leaves the installed
+files unchanged. Check the installed identity with:
+
+```bash
+cat /data/fan-control/VERSION
+```
 
 ### Branch-Specific Installation Fails
 
-**Issue**: Can't install from specific branch
+**Issue**: Can't install from a specific branch
 
-**Solutions**:
+Branch installs are for development only and are not checksum-verified.
+
 ```bash
-# Method 1: Direct URL
-curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/BRANCH_NAME/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
 
-# Method 2: Environment variable
-FAN_CONTROL_BRANCH=dev curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
-
-# Method 3: Manual clone
+# Or install local runtime files from a checkout
 git clone https://github.com/iceteaSA/unifi-fan-control.git
 cd unifi-fan-control
-git checkout BRANCH_NAME
 sudo ./install.sh
 ```
 
@@ -450,6 +462,9 @@ cat /sys/class/hwmon/hwmon0/pwm1
 
 # Current configuration
 cat /data/fan-control/config
+
+# Installed release identity
+cat /data/fan-control/VERSION
 
 # Optimal PWM value
 cat /data/fan-control/optimal_pwm
