@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        if: steps.release.outputs.release_created == 'true'
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+      - name: Build and verify release assets
+        if: steps.release.outputs.release_created == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(cat VERSION)" = "$VERSION"
+          bash -n fan-control.sh uninstall.sh
+          archive="unifi-fan-control-v${VERSION}.tar.gz"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@$(git show -s --format=%ct HEAD)" \
+            -czf "$archive" \
+            fan-control.sh uninstall.sh fan-control.service VERSION
+          printf '%s\n' fan-control.sh uninstall.sh fan-control.service VERSION | LC_ALL=C sort > /tmp/expected-files
+          tar -tzf "$archive" | LC_ALL=C sort > /tmp/archive-files
+          diff -u /tmp/expected-files /tmp/archive-files
+          sha256sum "$archive" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Upload release assets
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release upload "$TAG_NAME" \
+            "unifi-fan-control-v${VERSION}.tar.gz" \
+            SHA256SUMS \
+            --clobber
