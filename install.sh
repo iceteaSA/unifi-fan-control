@@ -19,6 +19,7 @@ WORK_DIR="$(mktemp -d)"
 RESOLVED_VERSION=""
 INSTALL_SOURCE=""
 SERVICE_WAS_ACTIVE=0
+UNVERIFIED_RELEASE=0
 DESTINATIONS=()
 NEW_FILES=()
 BACKUPS=()
@@ -202,6 +203,129 @@ copy_local_payload() {
     return 0
 }
 
+validate_unverified_consent() {
+    local tag="$1"
+    local allowed_tag="${FAN_CONTROL_ALLOW_UNVERIFIED:-}"
+
+    if [[ -z "$allowed_tag" ]]; then
+        return 0
+    fi
+    if [[ "$allowed_tag" != v* ]] || ! is_semver "${allowed_tag#v}"; then
+        fail "FAN_CONTROL_ALLOW_UNVERIFIED must name a release tag such as $tag"
+    fi
+    if [[ "$allowed_tag" != "$tag" ]]; then
+        fail "FAN_CONTROL_ALLOW_UNVERIFIED must match requested release tag: $tag"
+    fi
+}
+
+probe_unverified_fallback() {
+    local tag="$1"
+    local fallback_url="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/$tag/VERSION"
+    local fallback_error="$WORK_DIR/fallback-curl-error"
+    local fallback_status
+
+    if curl -fsSL --connect-timeout 10 --max-time 20 -o /dev/null "$fallback_url" 2>"$fallback_error"; then
+        echo "Error: Unverified fallback host raw.githubusercontent.com is reachable for $tag" >&2
+        return 0
+    else
+        fallback_status=$?
+    fi
+
+    if ((fallback_status == 22)); then
+        echo "Error: Unverified fallback host raw.githubusercontent.com responded, but the VERSION request failed (curl exit 22)" >&2
+    else
+        echo "Error: Unverified fallback host raw.githubusercontent.com is not reachable for $tag (curl exit $fallback_status)" >&2
+    fi
+    return 1
+}
+
+diagnose_release_download_failure() {
+    local tag="$1"
+    local curl_status="$2"
+    local curl_error="$3"
+    local failed_host
+    local http_status
+
+    if ((curl_status == 6)); then
+        failed_host=$(sed -n 's/.*Could not resolve host: \([^[:space:]]*\).*/\1/p' "$curl_error")
+        if [[ "$failed_host" == "release-assets.githubusercontent.com" ]]; then
+            echo "Error: DNS lookup failed for release-assets.githubusercontent.com while downloading release $tag" >&2
+            echo "Error: GitHub redirects release downloads to release-assets.githubusercontent.com" >&2
+            echo "Error: This is a resolver problem, not a fault in the installer or release" >&2
+        elif [[ -n "$failed_host" ]]; then
+            echo "Error: DNS lookup failed for $failed_host while downloading release $tag" >&2
+            echo "Error: This is a resolver problem, not a fault in the installer or release" >&2
+        else
+            echo "Error: DNS lookup failed while downloading release $tag (curl exit 6)" >&2
+            echo "Error: curl did not identify the host, so the installer cannot name it" >&2
+        fi
+    else
+        case "$curl_status" in
+            22)
+                http_status=$(sed -n 's/.*error: \([0-9][0-9][0-9]\).*/\1/p' "$curl_error")
+                if [[ -n "$http_status" ]]; then
+                    echo "Error: HTTP error $http_status while downloading release $tag" >&2
+                else
+                    echo "Error: HTTP error while downloading release $tag (curl exit 22)" >&2
+                fi
+                ;;
+            28)
+                echo "Error: Connection timed out while downloading release $tag (curl exit 28)" >&2
+                ;;
+            35 | 51 | 58 | 59 | 60 | 77)
+                echo "Error: TLS error while downloading release $tag (curl exit $curl_status)" >&2
+                ;;
+            *)
+                echo "Error: Network failure while downloading release $tag (curl exit $curl_status)" >&2
+                ;;
+        esac
+        echo "Error: This is not a DNS resolution failure" >&2
+    fi
+
+    probe_unverified_fallback "$tag" || true
+}
+
+download_unverified_payload() {
+    local ref="$1"
+    local source="$2"
+    local expected_version="${3:-}"
+    local filename
+    local payload_dir="$WORK_DIR/payload"
+    local base_url="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/$ref"
+
+    mkdir -p "$payload_dir"
+    for filename in "${PAYLOAD_FILES[@]}"; do
+        if ! curl -fsSL "$base_url/$filename" -o "$payload_dir/$filename"; then
+            fail "Failed to download $filename from $source"
+        fi
+    done
+
+    validate_payload "$payload_dir" "$expected_version"
+    INSTALL_SOURCE="$source"
+}
+
+download_unverified_release() {
+    local tag="$1"
+
+    echo "WARNING: SHA256 verification will be skipped for release $tag" >&2
+    download_unverified_payload "$tag" "unverified release $tag" "${tag#v}"
+    UNVERIFIED_RELEASE=1
+}
+
+handle_verified_download_failure() {
+    local tag="$1"
+    local curl_status="$2"
+    local curl_error="$3"
+
+    diagnose_release_download_failure "$tag" "$curl_status" "$curl_error"
+    if [[ -z "${FAN_CONTROL_ALLOW_UNVERIFIED:-}" ]]; then
+        echo "Error: The verified download failed. To install $tag without SHA256 verification, run:" >&2
+        echo "curl -fsSL https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/$tag/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=$tag bash" >&2
+        exit 1
+    fi
+    download_unverified_release "$tag"
+}
+
 download_verified_release() {
     local tag="$1"
     local archive_name="unifi-fan-control-${tag}.tar.gz"
@@ -211,12 +335,24 @@ download_verified_release() {
     local expected_checksum
     local actual_checksum
     local filename
+    local curl_error="$WORK_DIR/release-curl-error"
+    local curl_status
 
-    if ! curl -fsSL --max-filesize "$MAX_ARCHIVE_BYTES" "$RELEASE_BASE_URL/download/$tag/$archive_name" -o "$archive"; then
-        fail "Failed to download release archive: $tag"
+    validate_unverified_consent "$tag"
+
+    if curl -fsSL --max-filesize "$MAX_ARCHIVE_BYTES" "$RELEASE_BASE_URL/download/$tag/$archive_name" -o "$archive" 2>"$curl_error"; then
+        :
+    else
+        curl_status=$?
+        handle_verified_download_failure "$tag" "$curl_status" "$curl_error"
+        return 0
     fi
-    if ! curl -fsSL "$RELEASE_BASE_URL/download/$tag/SHA256SUMS" -o "$checksum_file"; then
-        fail "Failed to download release checksums: $tag"
+    if curl -fsSL "$RELEASE_BASE_URL/download/$tag/SHA256SUMS" -o "$checksum_file" 2>"$curl_error"; then
+        :
+    else
+        curl_status=$?
+        handle_verified_download_failure "$tag" "$curl_status" "$curl_error"
+        return 0
     fi
 
     if ! expected_checksum=$(awk -v filename="$archive_name" '
@@ -256,20 +392,9 @@ download_verified_release() {
 
 download_branch_payload() {
     local branch="$1"
-    local filename
-    local payload_dir="$WORK_DIR/payload"
-    local base_url="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/$branch"
 
     echo "WARNING: branch install is unverified: $branch"
-    mkdir -p "$payload_dir"
-    for filename in "${PAYLOAD_FILES[@]}"; do
-        if ! curl -fsSL "$base_url/$filename" -o "$payload_dir/$filename"; then
-            fail "Failed to download $filename from branch $branch"
-        fi
-    done
-
-    validate_payload "$payload_dir"
-    INSTALL_SOURCE="unverified branch $branch"
+    download_unverified_payload "$branch" "unverified branch $branch"
 }
 
 resolve_latest_release() {
@@ -466,5 +591,8 @@ echo "Installing fan-control v$RESOLVED_VERSION from $INSTALL_SOURCE"
 install_validated_payload
 
 echo "Installation successful!"
+if ((UNVERIFIED_RELEASE)); then
+    echo "WARNING: Installed v$RESOLVED_VERSION without SHA256 verification"
+fi
 echo "Configuration: nano $INSTALL_DIR/config"
 echo "Status check: journalctl -u fan-control.service -f"
