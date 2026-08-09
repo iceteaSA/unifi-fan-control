@@ -149,6 +149,13 @@ validate_archive_header_types() {
     while ((block * 512 < raw_size)); do
         dd if="$raw_archive" of="$header" bs=512 skip="$block" count=1 status=none
         if cmp -s "$header" "$zero_block"; then
+            if (((block + 1) * 512 >= raw_size)); then
+                fail "Release archive has a malformed end marker"
+            fi
+            dd if="$raw_archive" of="$header" bs=512 skip="$((block + 1))" count=1 status=none
+            if ! cmp -s "$header" "$zero_block"; then
+                fail "Release archive has a malformed end marker"
+            fi
             found_end=1
             break
         fi
@@ -165,7 +172,7 @@ validate_archive_header_types() {
 
         size_field=$(dd if="$header" bs=1 skip=124 count=12 status=none | tr -d '\000 ')
         if [[ -z "$size_field" ]]; then
-            size=0
+            fail "Release archive has an invalid entry size"
         elif [[ "$size_field" =~ ^[0-7]+$ ]]; then
             size=$(octal_to_decimal "$size_field")
         else
@@ -370,7 +377,9 @@ download_verified_release() {
         fail "Checksum mismatch for $archive_name"
     fi
 
-    # BusyBox strips leading / and ../ here, so raw-header validation remains required.
+    # GNU tar 1.34 on device preserves traversal paths and flags hardlinks; BusyBox
+    # tar in CI strips paths and misreports hardlinks. Raw-header validation keeps
+    # these checks independent of which tar is present.
     if ! tar -tzf "$archive" >"$WORK_DIR/archive-files"; then
         fail "Release archive could not be listed"
     fi
