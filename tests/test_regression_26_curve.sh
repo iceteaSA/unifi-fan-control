@@ -19,7 +19,7 @@ FAN_ACTIVATION_TEMP=$((MIN_TEMP + HYSTERESIS))
 
 assert_eq "$(calculate_speed 60)" "91" "60C should stay at minimum PWM: "
 assert_eq "$(calculate_speed 63)" "91" "63C should stay at minimum PWM: "
-assert_eq "$(calculate_speed 64)" "91" "64C boundary should stay at minimum PWM: "
+assert_eq "$(calculate_speed 64)" "91" "64C one below activation should stay at minimum PWM: "
 
 for temp in 60 61 62 63 64 65; do
     assert_eq "$(calculate_speed "$temp")" "$MIN_PWM" "${temp}C should be flat at minimum PWM: "
