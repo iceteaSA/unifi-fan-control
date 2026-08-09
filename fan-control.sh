@@ -10,6 +10,7 @@ CONFIG_FILE="${FAN_CONTROL_CONFIG_FILE:-/data/fan-control/config}"
 TEMP_STATE_FILE="${FAN_CONTROL_TEMP_STATE_FILE:-/data/fan-control/temp_state}"
 HWMON_BASE="${FAN_CONTROL_HWMON_BASE:-/sys/class/hwmon}"
 VERSION_FILE="${FAN_CONTROL_VERSION_FILE:-/data/fan-control/VERSION}"
+DRIVE_DEV_DIR="${FAN_CONTROL_DRIVE_DEV_DIR:-/dev}"
 
 # Define default configuration values
 DEFAULT_MIN_PWM=91                                    # Minimum active fan speed (0-255)
@@ -26,6 +27,10 @@ DEFAULT_MAX_PWM_STEP=25 # Max PWM change per adjustment
 DEFAULT_DEADBAND=1      # Temp stability threshold (°C)
 DEFAULT_ALPHA=20        # Smoothing factor, lower values make the smoothed temp follow raw temp more closely (0-100)
 DEFAULT_LEARNING_RATE=5 # PWM optimization step size
+DEFAULT_DRIVE_TEMP_ENABLED=auto
+DEFAULT_DRIVE_MIN_TEMP=50
+DEFAULT_DRIVE_MAX_TEMP=70
+DEFAULT_DRIVE_CHECK_INTERVAL=60
 
 # Create config file if it doesn't exist
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -57,6 +62,10 @@ MAX_PWM_STEP=$DEFAULT_MAX_PWM_STEP        # Max PWM change per adjustment
 DEADBAND=$DEFAULT_DEADBAND             # Temp stability threshold (°C)
 ALPHA=$DEFAULT_ALPHA               # Smoothing factor, lower values make the smoothed temp follow raw temp more closely (0-100)
 LEARNING_RATE=$DEFAULT_LEARNING_RATE        # PWM optimization step size
+DRIVE_TEMP_ENABLED=$DEFAULT_DRIVE_TEMP_ENABLED
+DRIVE_MIN_TEMP=$DEFAULT_DRIVE_MIN_TEMP
+DRIVE_MAX_TEMP=$DEFAULT_DRIVE_MAX_TEMP
+DRIVE_CHECK_INTERVAL=$DEFAULT_DRIVE_CHECK_INTERVAL
 DEFAULTS
         logger -t fan-control "FATAL: Failed to write to temporary config file"
         exit 1
@@ -108,6 +117,10 @@ check_param "MAX_PWM_STEP" "$DEFAULT_MAX_PWM_STEP" "# Max PWM change per adjustm
 check_param "DEADBAND" "$DEFAULT_DEADBAND" "# Temp stability threshold (°C)"
 check_param "ALPHA" "$DEFAULT_ALPHA" "# Smoothing factor (0-100)"
 check_param "LEARNING_RATE" "$DEFAULT_LEARNING_RATE" "# PWM optimization step size"
+check_param "DRIVE_TEMP_ENABLED" "$DEFAULT_DRIVE_TEMP_ENABLED" "# Enable drive temperature PWM floor (auto, true, false)"
+check_param "DRIVE_MIN_TEMP" "$DEFAULT_DRIVE_MIN_TEMP" "# Drive temperature where PWM floor begins (°C)"
+check_param "DRIVE_MAX_TEMP" "$DEFAULT_DRIVE_MAX_TEMP" "# Drive temperature where PWM floor reaches maximum (°C)"
+check_param "DRIVE_CHECK_INTERVAL" "$DEFAULT_DRIVE_CHECK_INTERVAL" "# Drive temperature polling interval (seconds)"
 
 # If missing parameters were found, update the config file atomically
 if [ ${#missing_params[@]} -gt 0 ]; then
@@ -189,6 +202,10 @@ MAX_PWM_STEP=$MAX_PWM_STEP        # Max PWM change per adjustment
 DEADBAND=$DEADBAND             # Temp stability threshold (°C)
 ALPHA=$ALPHA               # Smoothing factor (0-100)
 LEARNING_RATE=$LEARNING_RATE        # PWM optimization step size
+DRIVE_TEMP_ENABLED=$DRIVE_TEMP_ENABLED
+DRIVE_MIN_TEMP=$DRIVE_MIN_TEMP
+DRIVE_MAX_TEMP=$DRIVE_MAX_TEMP
+DRIVE_CHECK_INTERVAL=$DRIVE_CHECK_INTERVAL
 CONFIG
         if mv "$temp_config" "$CONFIG_FILE" 2>/dev/null; then
             logger -t fan-control "MIGRATE: Config file updated successfully"
@@ -234,6 +251,20 @@ validate_config "MAX_PWM_STEP" "$MAX_PWM_STEP" 1 50 "$DEFAULT_MAX_PWM_STEP" || c
 validate_config "DEADBAND" "$DEADBAND" 0 10 "$DEFAULT_DEADBAND" || config_changed=true
 validate_config "ALPHA" "$ALPHA" 1 99 "$DEFAULT_ALPHA" || config_changed=true
 validate_config "LEARNING_RATE" "$LEARNING_RATE" 1 20 "$DEFAULT_LEARNING_RATE" || config_changed=true
+validate_config "DRIVE_MIN_TEMP" "$DRIVE_MIN_TEMP" 30 90 "$DEFAULT_DRIVE_MIN_TEMP" || config_changed=true
+validate_config "DRIVE_MAX_TEMP" "$DRIVE_MAX_TEMP" 40 95 "$DEFAULT_DRIVE_MAX_TEMP" || config_changed=true
+validate_config "DRIVE_CHECK_INTERVAL" "$DRIVE_CHECK_INTERVAL" 15 600 "$DEFAULT_DRIVE_CHECK_INTERVAL" || config_changed=true
+if [[ "$DRIVE_TEMP_ENABLED" != "auto" && "$DRIVE_TEMP_ENABLED" != "true" && "$DRIVE_TEMP_ENABLED" != "false" ]]; then
+    logger -t fan-control "CONFIG: Invalid DRIVE_TEMP_ENABLED value: $DRIVE_TEMP_ENABLED, using default: $DEFAULT_DRIVE_TEMP_ENABLED"
+    DRIVE_TEMP_ENABLED=$DEFAULT_DRIVE_TEMP_ENABLED
+    config_changed=true
+fi
+if ((DRIVE_MAX_TEMP <= DRIVE_MIN_TEMP)); then
+    logger -t fan-control "CONFIG: DRIVE_MAX_TEMP must exceed DRIVE_MIN_TEMP, using defaults"
+    DRIVE_MIN_TEMP=$DEFAULT_DRIVE_MIN_TEMP
+    DRIVE_MAX_TEMP=$DEFAULT_DRIVE_MAX_TEMP
+    config_changed=true
+fi
 
 # If any config values were corrected, update the config file
 if [ "$config_changed" = true ]; then
@@ -258,6 +289,10 @@ MAX_PWM_STEP=$MAX_PWM_STEP        # Max PWM change per adjustment
 DEADBAND=$DEADBAND             # Temp stability threshold (°C)
 ALPHA=$ALPHA               # Smoothing factor (0-100)
 LEARNING_RATE=$LEARNING_RATE        # PWM optimization step size
+DRIVE_TEMP_ENABLED=$DRIVE_TEMP_ENABLED
+DRIVE_MIN_TEMP=$DRIVE_MIN_TEMP
+DRIVE_MAX_TEMP=$DRIVE_MAX_TEMP
+DRIVE_CHECK_INTERVAL=$DRIVE_CHECK_INTERVAL
 CONFIG
         logger -t fan-control "ERROR: Failed to write to temporary config file"
         # Continue with current in-memory values, but don't update the file
@@ -422,6 +457,14 @@ SMOOTHED_TEMP=50     # Current smoothed temperature
 LAST_ADJUSTMENT=0    # Timestamp of last PWM optimization
 LAST_AVG_TEMP=0      # Previous temperature (for deadband calculations)
 TEMP_READ_FAILURES=0 # Track consecutive temperature reading failures
+DRIVE_TEMP_AVAILABLE=false
+DRIVE_DEVICE=""
+DRIVE_METHOD=""
+DRIVE_TEMP=0
+DRIVE_WARNING_TEMP="unknown"
+DRIVE_PWM_FLOOR=0
+DRIVE_LAST_CHECK=0
+DRIVE_READ_FAILURE_LOGGED=false
 
 # Function to safely write to a file using atomic operations
 atomic_write_file() {
@@ -542,6 +585,139 @@ calculate_speed() {
     echo $speed
 }
 
+json_number() {
+    local json="$1"
+    local field="$2"
+
+    printf '%s\n' "$json" | sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" | sed -n '1p'
+}
+
+read_nvme_temperature() {
+    local device="$1"
+    local smart_log
+    local raw_temp
+    local controller
+    local warning_temp
+
+    smart_log=$(nvme smart-log -o json "$device" 2>/dev/null) || return 1
+    raw_temp=$(json_number "$smart_log" "temperature")
+    [[ "$raw_temp" =~ ^[0-9]+$ ]] || return 1
+
+    # nvme-cli reports SMART temperatures in Kelvin; smartctl uses Celsius.
+    DRIVE_READ_TEMP=$((raw_temp - 273))
+    ((DRIVE_READ_TEMP >= 0 && DRIVE_READ_TEMP <= 120)) || return 1
+
+    controller=$(nvme id-ctrl -o json "$device" 2>/dev/null || true)
+    warning_temp=$(json_number "$controller" "wctemp")
+    if [[ "$warning_temp" =~ ^[0-9]+$ ]]; then
+        if ((warning_temp >= 273)); then
+            warning_temp=$((warning_temp - 273))
+        fi
+        DRIVE_WARNING_TEMP=$warning_temp
+    else
+        DRIVE_WARNING_TEMP="unknown"
+    fi
+}
+
+read_smartctl_temperature() {
+    local device="$1"
+    local smart_log
+    local raw_temp
+    local warning_temp
+
+    smart_log=$(smartctl -j -A "$device" 2>/dev/null) || return 1
+    raw_temp=$(json_number "$smart_log" "current")
+    [[ "$raw_temp" =~ ^[0-9]+$ ]] || return 1
+    ((raw_temp >= 0 && raw_temp <= 120)) || return 1
+
+    DRIVE_READ_TEMP=$raw_temp
+    warning_temp=$(json_number "$smart_log" "warning")
+    if [[ "$warning_temp" =~ ^[0-9]+$ ]]; then
+        DRIVE_WARNING_TEMP=$warning_temp
+    else
+        DRIVE_WARNING_TEMP="unknown"
+    fi
+}
+
+calculate_drive_pwm_floor() {
+    local drive_range=$((DRIVE_MAX_TEMP - DRIVE_MIN_TEMP))
+
+    if ((DRIVE_TEMP <= DRIVE_MIN_TEMP)); then
+        DRIVE_PWM_FLOOR=0
+    elif ((DRIVE_TEMP >= DRIVE_MAX_TEMP)); then
+        DRIVE_PWM_FLOOR=$MAX_PWM
+    else
+        DRIVE_PWM_FLOOR=$((MIN_PWM + ((DRIVE_TEMP - DRIVE_MIN_TEMP) * (MAX_PWM - MIN_PWM) / drive_range)))
+    fi
+}
+
+detect_drive_temperature() {
+    local device
+    local device_found=false
+
+    [[ "$DRIVE_TEMP_ENABLED" != "false" ]] || return
+
+    for device in "$DRIVE_DEV_DIR"/nvme?n? "$DRIVE_DEV_DIR"/sd?; do
+        [[ -e "$device" ]] || continue
+        device_found=true
+
+        if read_nvme_temperature "$device"; then
+            DRIVE_DEVICE=$device
+            DRIVE_METHOD="nvme"
+        elif read_smartctl_temperature "$device"; then
+            DRIVE_DEVICE=$device
+            DRIVE_METHOD="smartctl"
+        else
+            continue
+        fi
+
+        DRIVE_TEMP_AVAILABLE=true
+        DRIVE_TEMP=$DRIVE_READ_TEMP
+        calculate_drive_pwm_floor
+        DRIVE_LAST_CHECK=$(date +%s)
+        logger -t fan-control "DRIVE: Detected ${DRIVE_DEVICE} via ${DRIVE_METHOD} | Temp=${DRIVE_TEMP}°C | wctemp=${DRIVE_WARNING_TEMP}°C"
+        return
+    done
+
+    if [[ "$device_found" = true ]]; then
+        logger -t fan-control "DRIVE: No readable drive temperature source found; feature disabled"
+    fi
+}
+
+update_drive_temperature() {
+    local now
+    local read_ok=false
+
+    [[ "$DRIVE_TEMP_AVAILABLE" = true ]] || return
+    now=$(date +%s)
+    if ((now - DRIVE_LAST_CHECK < DRIVE_CHECK_INTERVAL)); then
+        return
+    fi
+    DRIVE_LAST_CHECK=$now
+
+    if [[ "$DRIVE_METHOD" = "nvme" ]]; then
+        if read_nvme_temperature "$DRIVE_DEVICE"; then
+            read_ok=true
+        fi
+    else
+        if read_smartctl_temperature "$DRIVE_DEVICE"; then
+            read_ok=true
+        fi
+    fi
+
+    if [[ "$read_ok" = true ]]; then
+        DRIVE_TEMP=$DRIVE_READ_TEMP
+        calculate_drive_pwm_floor
+        DRIVE_READ_FAILURE_LOGGED=false
+    else
+        DRIVE_PWM_FLOOR=0
+        if [[ "$DRIVE_READ_FAILURE_LOGGED" = false ]]; then
+            logger -t fan-control "DRIVE: ${DRIVE_DEVICE} read failed; floor disabled"
+            DRIVE_READ_FAILURE_LOGGED=true
+        fi
+    fi
+}
+
 # Speed control with logging
 set_fan_speed() {
     local new_speed=$1
@@ -571,6 +747,17 @@ set_fan_speed() {
         # Enforce MIN/MAX only in active states
         new_speed=$((new_speed > MAX_PWM ? MAX_PWM : new_speed))
         new_speed=$((new_speed < MIN_PWM ? MIN_PWM : new_speed))
+    fi
+
+    # The floor follows the OFF override so a hot drive can still start a cool CPU's fan.
+    if ((DRIVE_PWM_FLOOR > new_speed)); then
+        if ((DRIVE_PWM_FLOOR > LAST_PWM + MAX_PWM_STEP)); then
+            new_speed=$((LAST_PWM + MAX_PWM_STEP))
+            reason="Drive floor ramp-up: ${LAST_PWM}→${new_speed}pwm"
+        else
+            new_speed=$DRIVE_PWM_FLOOR
+            reason="Drive temperature floor: ${DRIVE_TEMP}°C"
+        fi
     fi
 
     if [[ "$new_speed" -ne "$LAST_PWM" ]]; then
@@ -673,6 +860,7 @@ set_fan_speed() {
 ###[ STATE MANAGEMENT ]########################################################
 update_fan_state() {
     get_smoothed_temp
+    update_drive_temperature
     local avg_temp=$SMOOTHED_TEMP
     local now
     now=$(date +%s)
@@ -724,6 +912,8 @@ update_fan_state() {
                     state_transition="OFF→ACTIVE (${avg_temp}°C ≥ ${FAN_ACTIVATION_TEMP}°C)"
                     CURRENT_STATE=$STATE_ACTIVE
                     set_fan_speed "$OPTIMAL_PWM"
+                else
+                    set_fan_speed 0
                 fi
                 ;;
 
@@ -801,6 +991,7 @@ fi
 logger -t fan-control "CONFIG: fan-control v${FAN_CONTROL_VERSION} starting"
 logger -t fan-control "START: Optimal=${OPTIMAL_PWM}pwm | Config: MIN=${MIN_TEMP}°C, MAX=${MAX_TEMP}°C, HYST=${HYSTERESIS}°C"
 
+detect_drive_temperature
 get_smoothed_temp
 if ((SMOOTHED_TEMP >= FAN_ACTIVATION_TEMP)); then
     logger -t fan-control "COLDSTART: Initial temp ${SMOOTHED_TEMP}°C ≥ ${FAN_ACTIVATION_TEMP}°C"
