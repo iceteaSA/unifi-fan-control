@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+HWMON_BASE="${FAN_CONTROL_HWMON_BASE:-/sys/class/hwmon}"
+INSTALL_DIR="${FAN_CONTROL_INSTALL_DIR:-/data/fan-control}"
+SERVICE_FILE="${FAN_CONTROL_SERVICE_FILE:-/etc/systemd/system/fan-control.service}"
+PID_FILE="${FAN_CONTROL_PID_FILE:-/var/run/fan-control.pid}"
+
 # Check for root privileges
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: This script must be run as root (sudo)"
@@ -22,7 +27,7 @@ systemctl disable fan-control.service 2>/dev/null || true
 reset_ok=false
 
 # Strategy 1: pwm files directly in hwmon class directories
-for pwm_file in /sys/class/hwmon/hwmon*/pwm[1-9]; do
+for pwm_file in "$HWMON_BASE"/hwmon*/pwm[1-9]; do
     if [ -e "$pwm_file" ]; then
         echo "Resetting $pwm_file to 0..."
         echo 0 >"$pwm_file" 2>/dev/null && reset_ok=true
@@ -31,7 +36,7 @@ done
 
 # Strategy 2: raw device paths (for UDM-SE where class dir has no pwm files)
 if [ "$reset_ok" = false ]; then
-    for hwmon_dir in /sys/class/hwmon/hwmon*; do
+    for hwmon_dir in "$HWMON_BASE"/hwmon*; do
         dev_path=$(readlink -f "$hwmon_dir/device" 2>/dev/null) || continue
         for pwm_file in "$dev_path"/pwm[1-9]; do
             if [ -e "$pwm_file" ]; then
@@ -46,15 +51,15 @@ fi
 
 # Remove system files
 echo "Removing system files..."
-rm -f /etc/systemd/system/fan-control.service || echo "Warning: Could not remove service file"
-rm -f /var/run/fan-control.pid || echo "Warning: Could not remove PID file"
+rm -f "$SERVICE_FILE" || echo "Warning: Could not remove service file"
+rm -f "$PID_FILE" || echo "Warning: Could not remove PID file"
 
 # Remove data files
 echo "Removing data files..."
-if [ -d "/data/fan-control" ]; then
-    rm -rf /data/fan-control || {
+if [ -d "$INSTALL_DIR" ]; then
+    rm -rf "$INSTALL_DIR" || {
         echo "Warning: Could not remove data directory"
-        echo "You may need to manually remove /data/fan-control"
+        echo "You may need to manually remove $INSTALL_DIR"
     }
 else
     echo "Data directory not found, skipping"
