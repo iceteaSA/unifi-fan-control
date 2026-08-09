@@ -7,8 +7,7 @@
     ".": {
       "package-name": "unifi-fan-control",
       "changelog-path": "CHANGELOG.md",
-      "version-file": "VERSION",
-      "release-as": "1.0.0"
+      "version-file": "VERSION"
     }
   }
 }
