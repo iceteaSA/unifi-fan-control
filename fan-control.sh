@@ -566,6 +566,9 @@ DRIVE_LAST_FLOOR_TEMP=0
 DRIVE_LAST_FLOOR_PWM=0
 DRIVE_LAST_CHECK=0
 DRIVE_ALL_READ_FAILURE_LOGGED=false
+LAST_TEMP_LOG=""
+LAST_CALC_LOG=""
+LAST_DEADBAND_LOG=""
 
 # Function to safely write to a file using atomic operations
 atomic_write_file() {
@@ -655,7 +658,11 @@ get_smoothed_temp() {
         atomic_write_file "$TEMP_STATE_FILE" "$SMOOTHED_TEMP"
     fi
 
-    logger -t fan-control "TEMP:  RAW=${raw_temp}°C | SMOOTH=${SMOOTHED_TEMP}°C | DELTA=$((raw_temp - SMOOTHED_TEMP))°C"
+    local temp_log="TEMP:  RAW=${raw_temp}°C | SMOOTH=${SMOOTHED_TEMP}°C | DELTA=$((raw_temp - SMOOTHED_TEMP))°C"
+    if [[ "$temp_log" != "$LAST_TEMP_LOG" ]]; then
+        logger -t fan-control "$temp_log"
+        LAST_TEMP_LOG=$temp_log
+    fi
 }
 
 calculate_speed() {
@@ -682,8 +689,27 @@ calculate_speed() {
     # Ensure speed doesn't exceed MAX_PWM
     speed=$((speed > MAX_PWM ? MAX_PWM : speed))
 
-    logger -t fan-control "CALC: temp_diff=${temp_diff}°C | range=${temp_range}°C | speed=${speed}pwm"
-    echo $speed
+    echo "$speed"
+}
+
+log_calculation() {
+    local avg_temp=$1
+    local speed=$2
+    local temp_range=$((MAX_TEMP - FAN_ACTIVATION_TEMP))
+    local temp_diff=$((avg_temp - FAN_ACTIVATION_TEMP))
+
+    if ((temp_diff < 0)); then
+        temp_diff=0
+    fi
+    if ((temp_range <= 0)); then
+        temp_range=1
+    fi
+
+    local calc_log="CALC: temp_diff=${temp_diff}°C | range=${temp_range}°C | speed=${speed}pwm"
+    if [[ "$calc_log" != "$LAST_CALC_LOG" ]]; then
+        logger -t fan-control "$calc_log"
+        LAST_CALC_LOG=$calc_log
+    fi
 }
 
 json_number() {
@@ -1074,6 +1100,7 @@ update_fan_state() {
                     CURRENT_STATE=$STATE_ACTIVE
                     local calculated_speed
                     calculated_speed=$(calculate_speed "$avg_temp")
+                    log_calculation "$avg_temp" "$calculated_speed"
                     set_fan_speed "$calculated_speed"
                 else
                     # Stay in emergency mode
@@ -1119,16 +1146,22 @@ update_fan_state() {
                         logger -t fan-control "DEADBAND:  DELTA=${temp_delta}°C | THRESHOLD=${DEADBAND}°C"
                         local speed
                         speed=$(calculate_speed "$avg_temp")
+                        log_calculation "$avg_temp" "$speed"
                         set_fan_speed "$speed"
                     else
                         # Force adjustment if we're below target PWM
                         local target_speed
                         target_speed=$(calculate_speed "$avg_temp")
+                        log_calculation "$avg_temp" "$target_speed"
                         if ((LAST_PWM < target_speed)); then
                             logger -t fan-control "DEADBAND:  Forcing adjustment (current ${LAST_PWM}pwm < target ${target_speed}pwm)"
                             set_fan_speed "$target_speed"
                         else
-                            logger -t fan-control "DEADBAND:  No change | DELTA=${temp_delta}°C"
+                            local deadband_log="DEADBAND:  No change | DELTA=${temp_delta}°C"
+                            if [[ "$deadband_log" != "$LAST_DEADBAND_LOG" ]]; then
+                                logger -t fan-control "$deadband_log"
+                                LAST_DEADBAND_LOG=$deadband_log
+                            fi
                         fi
                     fi
                 fi
