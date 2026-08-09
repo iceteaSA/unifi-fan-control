@@ -592,6 +592,14 @@ json_number() {
     printf '%s\n' "$json" | sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" | sed -n '1p'
 }
 
+json_object_number() {
+    local json="$1"
+    local object="$2"
+    local field="$3"
+
+    printf '%s\n' "$json" | sed -n "/\"${object}\"[[:space:]]*:[[:space:]]*{/,/}/ { s/.*\"${field}\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p; }" | sed -n '1p'
+}
+
 read_nvme_temperature() {
     local device="$1"
     local smart_log
@@ -625,13 +633,13 @@ read_smartctl_temperature() {
     local raw_temp
     local warning_temp
 
-    smart_log=$(smartctl -j -A "$device" 2>/dev/null) || return 1
+    smart_log=$(smartctl -j -a "$device" 2>/dev/null) || return 1
     raw_temp=$(json_number "$smart_log" "current")
     [[ "$raw_temp" =~ ^[0-9]+$ ]] || return 1
     ((raw_temp >= 0 && raw_temp <= 120)) || return 1
 
     DRIVE_READ_TEMP=$raw_temp
-    warning_temp=$(json_number "$smart_log" "warning")
+    warning_temp=$(json_object_number "$smart_log" "nvme_composite_temperature_threshold" "warning")
     if [[ "$warning_temp" =~ ^[0-9]+$ ]]; then
         DRIVE_WARNING_TEMP=$warning_temp
     else
@@ -654,6 +662,7 @@ calculate_drive_pwm_floor() {
 detect_drive_temperature() {
     local device
     local device_found=false
+    local warning_temp_display
 
     [[ "$DRIVE_TEMP_ENABLED" != "false" ]] || return
 
@@ -675,7 +684,11 @@ detect_drive_temperature() {
         DRIVE_TEMP=$DRIVE_READ_TEMP
         calculate_drive_pwm_floor
         DRIVE_LAST_CHECK=$(date +%s)
-        logger -t fan-control "DRIVE: Detected ${DRIVE_DEVICE} via ${DRIVE_METHOD} | Temp=${DRIVE_TEMP}°C | wctemp=${DRIVE_WARNING_TEMP}°C"
+        warning_temp_display="not reported"
+        if [[ "$DRIVE_WARNING_TEMP" =~ ^[0-9]+$ ]]; then
+            warning_temp_display="${DRIVE_WARNING_TEMP}°C"
+        fi
+        logger -t fan-control "DRIVE: Detected ${DRIVE_DEVICE} via ${DRIVE_METHOD} | Temp=${DRIVE_TEMP}°C | wctemp=${warning_temp_display}"
         return
     done
 
