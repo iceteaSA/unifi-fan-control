@@ -60,25 +60,24 @@ echo "  ✓ Scenario ${scenario}: absent smartctl threshold is reported honestly
 stop_daemon
 cleanup_sandbox
 
-# ── Scenario 3: non-zero writable uncontrolled PWM is warned once ──────────
+# ── Scenario 3: stopped writable PWM is controlled ──────────────────────────
 scenario=$((scenario + 1))
 setup_sandbox
-echo "45" >"$SANDBOX/cputemp"
+echo "70" >"$SANDBOX/cputemp"
 echo 25 >"$SANDBOX/hwmon/hwmon0/pwm2"
 echo 0 >"$SANDBOX/hwmon/hwmon0/fan2_input"
 
 start_daemon
-wait_for_log 'DETECT:.*pwm2.*25.*not controlled' 10 || fail "non-zero uncontrolled PWM was not warned"
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm2" 0
 logs=$(cat "$SANDBOX/syslog")
-assert_eq "$(grep -c 'DETECT:.*pwm2.*25.*not controlled' <<<"$logs" || true)" "1" "uncontrolled PWM warning count: "
-assert_eq "$(cat "$SANDBOX/hwmon/hwmon0/pwm2")" "25" "uncontrolled PWM must not be reset: "
+assert_contains "$logs" 'pwm2.*0 RPM (unknown, controlled)' "stopped writable PWM should remain controlled: "
 
-echo "  ✓ Scenario ${scenario}: non-zero uncontrolled PWM is warned once"
+echo "  ✓ Scenario ${scenario}: stopped writable PWM is controlled"
 
 stop_daemon
 cleanup_sandbox
 
-# ── Scenario 4: zero uncontrolled and controlled PWM channels stay silent ───
+# ── Scenario 4: controlled PWM channels stay silent ─────────────────────────
 scenario=$((scenario + 1))
 setup_sandbox
 echo "45" >"$SANDBOX/cputemp"
@@ -90,10 +89,10 @@ start_daemon
 /bin/sleep 1
 logs=$(cat "$SANDBOX/syslog")
 if grep -q 'DETECT:.*not controlled' <<<"$logs"; then
-    fail "zero uncontrolled or controlled PWM channel emitted a warning"
+    fail "controlled PWM channel emitted an uncontrolled warning"
 fi
 
-echo "  ✓ Scenario ${scenario}: zero uncontrolled and controlled PWM stay silent"
+echo "  ✓ Scenario ${scenario}: controlled PWM channels stay silent"
 
 stop_daemon
 cleanup_sandbox
