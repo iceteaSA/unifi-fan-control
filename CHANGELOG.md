@@ -5,6 +5,14 @@ All notable changes to the UCG Max Fan Control project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/iceteaSA/unifi-fan-control/compare/v1.2.0...v1.2.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* diagnose install failures precisely and harden the tar header walk ([#44](https://github.com/iceteaSA/unifi-fan-control/issues/44)) ([a014711](https://github.com/iceteaSA/unifi-fan-control/commit/a0147114001ad1f2c905a445385bd8eada0e4f60))
+* drive floor follows the hottest drive across all readable drives ([#43](https://github.com/iceteaSA/unifi-fan-control/issues/43)) ([8859849](https://github.com/iceteaSA/unifi-fan-control/commit/885984983db81dc09b08669472dc9c17505df5d4))
+
 ## [Unreleased]
 
 ### Fixed
