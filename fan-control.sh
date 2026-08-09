@@ -3,6 +3,8 @@
 # UniFi Intelligent Fan Controller
 ###############################################################################
 
+umask 077
+
 ###[ CONFIGURATION ]###########################################################
 CONFIG_FILE="${FAN_CONTROL_CONFIG_FILE:-/data/fan-control/config}"
 TEMP_STATE_FILE="${FAN_CONTROL_TEMP_STATE_FILE:-/data/fan-control/temp_state}"

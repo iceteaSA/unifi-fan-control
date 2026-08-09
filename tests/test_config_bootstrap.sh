@@ -20,6 +20,16 @@ rm -f "$SANDBOX/config"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive" "daemon should be running"
+assert_eq "$(stat -c%a "$SANDBOX/config")" "600" "new config mode: "
+echo "70" >"$SANDBOX/cputemp"
+for _ in {1..20}; do
+    [[ -f "$SANDBOX/temp_state" ]] && break
+    /bin/sleep 0.1
+done
+for state_file in "$SANDBOX/temp_state" "$SANDBOX/optimal_pwm" "$SANDBOX/pid"; do
+    [[ -f "$state_file" ]] || fail "daemon did not create $state_file"
+    assert_eq "$(stat -c%a "$state_file")" "600" "$(basename "$state_file") mode: "
+done
 
 declare -a required_params=(
     "MIN_PWM" "MAX_PWM" "MIN_TEMP" "MAX_TEMP" "HYSTERESIS"
@@ -66,6 +76,7 @@ assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
 
 min_temp=$(grep "^MIN_TEMP=" "$SANDBOX/config" | cut -d= -f2 | awk '{print $1}')
 assert_eq "$min_temp" "60" "MIN_TEMP should be clamped to default (60), got "
+assert_eq "$(stat -c%a "$SANDBOX/config")" "600" "corrected config mode: "
 
 echo "  ✓ Scenario ${scenario}: Corrupt numeric value clamped to default"
 
@@ -93,6 +104,7 @@ OPTIMAL_PWM_FILE="$SANDBOX/optimal_pwm"
 MAX_PWM_STEP=25
 ALPHA=20
 EOF
+chmod 600 "$SANDBOX/config"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
@@ -103,6 +115,7 @@ fi
 if ! grep -q "^LEARNING_RATE=" "$SANDBOX/config"; then
     fail "LEARNING_RATE should have been re-appended"
 fi
+assert_eq "$(stat -c%a "$SANDBOX/config")" "600" "re-appended config mode: "
 
 echo "  ✓ Scenario ${scenario}: Missing parameters re-appended"
 
