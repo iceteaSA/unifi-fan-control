@@ -285,6 +285,29 @@ journalctl -xe
 
 ---
 
+### Drive Temperature Floor Is Active
+
+**Symptoms**: The fan runs while CPU temperature is below its activation threshold, or `DRIVE:` appears in the log.
+
+The drive floor is separate from the CPU curve. It starts at 50°C and reaches maximum PWM at 70°C by default. A device without a readable drive stays silent and keeps the existing CPU-only behavior.
+
+**Check**:
+```bash
+journalctl -u fan-control.service -n 50 | grep "DRIVE:"
+```
+
+**Tune or disable it**:
+```bash
+sudo nano /data/fan-control/config
+
+DRIVE_MIN_TEMP=55        # Start the floor later
+DRIVE_MAX_TEMP=75        # Reach maximum PWM later
+# DRIVE_TEMP_ENABLED=false  # Skip drive detection entirely
+
+sudo systemctl restart fan-control.service
+```
+
+---
 ## Configuration Issues
 
 ### Configuration Changes Not Applied

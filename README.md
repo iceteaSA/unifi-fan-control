@@ -32,6 +32,7 @@ and gateways running full UniFi OS.
   - Falls back to raw sysfs device paths when needed (UDM-SE)
   - Identifies active fans by RPM reading and write-tests each channel
   - All detected fans receive the same PWM value
+- **Drive Temperature Floor**: Raises PWM for a hot NVMe or SATA drive without changing the CPU curve
 
 ## Installation
 ```bash
@@ -92,6 +93,13 @@ MAX_PWM=255       # Maximum speed (0-255)
 MAX_PWM_STEP=25   # Maximum speed change per adjustment
                   # Note: Due to hardware limitations, actual PWM values may vary slightly from requested values
 
+# Drive Temperature Floor
+# auto detects a readable NVMe or SATA drive; false skips detection entirely
+DRIVE_TEMP_ENABLED=auto
+DRIVE_MIN_TEMP=50        # Start raising the PWM floor (°C)
+DRIVE_MAX_TEMP=70        # Reach maximum PWM (°C)
+DRIVE_CHECK_INTERVAL=60  # Drive temperature polling interval (seconds)
+
 # Advanced Tuning
 ALPHA=20          # Smoothing factor, lower values make the smoothed temp follow raw temp more closely (0-100 raw→smooth)
 DEADBAND=1        # Temperature stability threshold (°C)
@@ -149,6 +157,9 @@ STATE: TAPER→ACTIVE (67℃ ≥ 67℃)
 # Speed Changes
 SET: 55→80pwm | Reason: Ramp-up limited: 55→80pwm
 SET: 120→255pwm | Reason: EMERGENCY: Temp 86℃ ≥ 85℃
+
+# Drive Temperature Floor
+DRIVE: Detected /dev/nvme0n1 via nvme | Temp=47℃ | wctemp=83℃
 
 # Enhanced Learning System
 LEARNING: 80→85pwm (+5 (rising temp 2℃)) [Rate=7]

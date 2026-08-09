@@ -35,6 +35,7 @@ declare -a required_params=(
     "MIN_PWM" "MAX_PWM" "MIN_TEMP" "MAX_TEMP" "HYSTERESIS"
     "CHECK_INTERVAL" "TAPER_MINS" "FAN_PWM_AUTODETECT" "FAN_PWM_DEVICE"
     "OPTIMAL_PWM_FILE" "MAX_PWM_STEP" "DEADBAND" "ALPHA" "LEARNING_RATE"
+    "DRIVE_TEMP_ENABLED" "DRIVE_MIN_TEMP" "DRIVE_MAX_TEMP" "DRIVE_CHECK_INTERVAL"
 )
 for param in "${required_params[@]}"; do
     if ! grep -q "^${param}=" "$SANDBOX/config" 2>/dev/null; then
@@ -42,7 +43,7 @@ for param in "${required_params[@]}"; do
     fi
 done
 
-echo "  ✓ Scenario ${scenario}: Fresh config created with all 14 parameters"
+echo "  ✓ Scenario ${scenario}: Fresh config created with all 18 parameters"
 
 stop_daemon
 cleanup_sandbox
@@ -118,6 +119,76 @@ fi
 assert_eq "$(stat -c%a "$SANDBOX/config")" "600" "re-appended config mode: "
 
 echo "  ✓ Scenario ${scenario}: Missing parameters re-appended"
+
+stop_daemon
+cleanup_sandbox
+
+# ── Scenario 4: migration rewrite preserves drive parameters ─────────────────
+scenario=$((scenario + 1))
+setup_sandbox
+
+cat >"$SANDBOX/config" <<EOF
+MIN_PWM=91
+MAX_PWM=255
+MIN_TEMP=60
+MAX_TEMP=85
+HYSTERESIS=5
+CHECK_INTERVAL=15
+TAPER_MINS=90
+FAN_PWM_AUTODETECT=true
+FAN_PWM_DEVICE="/stale/raw/pwm1"
+OPTIMAL_PWM_FILE="$SANDBOX/optimal_pwm"
+MAX_PWM_STEP=25
+DEADBAND=1
+ALPHA=20
+LEARNING_RATE=5
+DRIVE_TEMP_ENABLED=auto
+DRIVE_MIN_TEMP=50
+DRIVE_MAX_TEMP=70
+DRIVE_CHECK_INTERVAL=60
+EOF
+
+start_daemon
+for param in MIN_PWM MAX_PWM MIN_TEMP MAX_TEMP HYSTERESIS CHECK_INTERVAL TAPER_MINS FAN_PWM_AUTODETECT FAN_PWM_DEVICE OPTIMAL_PWM_FILE MAX_PWM_STEP DEADBAND ALPHA LEARNING_RATE DRIVE_TEMP_ENABLED DRIVE_MIN_TEMP DRIVE_MAX_TEMP DRIVE_CHECK_INTERVAL; do
+    grep -q "^${param}=" "$SANDBOX/config" || fail "migration rewrite removed ${param}"
+done
+
+echo "  ✓ Scenario ${scenario}: Migration rewrite preserves all 18 parameters"
+
+stop_daemon
+cleanup_sandbox
+
+# ── Scenario 5: corrected-value rewrite preserves drive parameters ───────────
+scenario=$((scenario + 1))
+setup_sandbox
+
+cat >"$SANDBOX/config" <<EOF
+MIN_PWM=999
+MAX_PWM=255
+MIN_TEMP=60
+MAX_TEMP=85
+HYSTERESIS=5
+CHECK_INTERVAL=15
+TAPER_MINS=90
+FAN_PWM_AUTODETECT=true
+FAN_PWM_DEVICE="$SANDBOX/hwmon/hwmon0/pwm1"
+OPTIMAL_PWM_FILE="$SANDBOX/optimal_pwm"
+MAX_PWM_STEP=25
+DEADBAND=1
+ALPHA=20
+LEARNING_RATE=5
+DRIVE_TEMP_ENABLED=auto
+DRIVE_MIN_TEMP=50
+DRIVE_MAX_TEMP=70
+DRIVE_CHECK_INTERVAL=60
+EOF
+
+start_daemon
+for param in MIN_PWM MAX_PWM MIN_TEMP MAX_TEMP HYSTERESIS CHECK_INTERVAL TAPER_MINS FAN_PWM_AUTODETECT FAN_PWM_DEVICE OPTIMAL_PWM_FILE MAX_PWM_STEP DEADBAND ALPHA LEARNING_RATE DRIVE_TEMP_ENABLED DRIVE_MIN_TEMP DRIVE_MAX_TEMP DRIVE_CHECK_INTERVAL; do
+    grep -q "^${param}=" "$SANDBOX/config" || fail "corrected-value rewrite removed ${param}"
+done
+
+echo "  ✓ Scenario ${scenario}: Corrected-value rewrite preserves all 18 parameters"
 
 stop_daemon
 cleanup_sandbox

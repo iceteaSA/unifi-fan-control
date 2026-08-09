@@ -36,6 +36,9 @@ setup_sandbox() {
     export FAN_CONTROL_OPTIMAL_PWM_FILE="$SANDBOX/optimal_pwm"
     export FAN_CONTROL_HWMON_BASE="$SANDBOX/hwmon"
     export FAN_CONTROL_VERSION_FILE="$SANDBOX/VERSION"
+    export FAN_CONTROL_DRIVE_DEV_DIR="$SANDBOX/drives"
+
+    mkdir -p "$FAN_CONTROL_DRIVE_DEV_DIR"
 
     # Build fake hwmon tree — one device with one PWM channel
     local hwmon_dir="$SANDBOX/hwmon/hwmon0"
@@ -75,6 +78,31 @@ STUB
 echo "$@" >> "${SANDBOX:-/tmp}/syslog"
 STUB
     chmod +x "$SANDBOX/bin/logger"
+
+    # Stubs: drive tools read controlled JSON fixtures or fail when requested.
+    cat >"$SANDBOX/bin/nvme" <<'STUB'
+#!/usr/bin/env bash
+echo "nvme $*" >> "${SANDBOX:-/tmp}/drive_calls"
+if [[ -f "${SANDBOX:-/tmp}/nvme_fail" ]]; then
+    exit 1
+fi
+response_file="${SANDBOX:-/tmp}/nvme_response"
+[[ -f "$response_file" ]] || exit 1
+cat "$response_file"
+STUB
+    chmod +x "$SANDBOX/bin/nvme"
+
+    cat >"$SANDBOX/bin/smartctl" <<'STUB'
+#!/usr/bin/env bash
+echo "smartctl $*" >> "${SANDBOX:-/tmp}/drive_calls"
+if [[ -f "${SANDBOX:-/tmp}/smartctl_fail" ]]; then
+    exit 1
+fi
+response_file="${SANDBOX:-/tmp}/smartctl_response"
+[[ -f "$response_file" ]] || exit 1
+cat "$response_file"
+STUB
+    chmod +x "$SANDBOX/bin/smartctl"
 
     # Stub: sleep — accelerates daemon loop by sleeping 0.05s
     cat >"$SANDBOX/bin/sleep" <<STUB
