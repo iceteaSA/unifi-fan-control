@@ -39,9 +39,9 @@ setup_sandbox() {
     # Build fake hwmon tree — one device with one PWM channel
     local hwmon_dir="$SANDBOX/hwmon/hwmon0"
     mkdir -p "$hwmon_dir"
-    echo 0 > "$hwmon_dir/pwm1"
-    echo 3000 > "$hwmon_dir/fan1_input"   # RPM — fan spinning by default
-    echo "fake-driver" > "$hwmon_dir/name"
+    echo 0 >"$hwmon_dir/pwm1"
+    echo 3000 >"$hwmon_dir/fan1_input" # RPM — fan spinning by default
+    echo "fake-driver" >"$hwmon_dir/name"
 
     # Create stub bin directory PREPENDED to PATH
     mkdir -p "$SANDBOX/bin"
@@ -50,7 +50,7 @@ setup_sandbox() {
     export PATH="$SANDBOX/bin:$PATH"
 
     # Stub: ubnt-systool — reads $SANDBOX/cputemp; exits 1 on missing or FAIL
-    cat > "$SANDBOX/bin/ubnt-systool" <<'STUB'
+    cat >"$SANDBOX/bin/ubnt-systool" <<'STUB'
 #!/usr/bin/env bash
 if [[ "$1" != "cputemp" ]]; then
     echo "unknown arg: $*" >&2
@@ -69,24 +69,24 @@ STUB
     chmod +x "$SANDBOX/bin/ubnt-systool"
 
     # Stub: logger — appends arguments to $SANDBOX/syslog
-    cat > "$SANDBOX/bin/logger" <<'STUB'
+    cat >"$SANDBOX/bin/logger" <<'STUB'
 #!/usr/bin/env bash
 echo "$@" >> "${SANDBOX:-/tmp}/syslog"
 STUB
     chmod +x "$SANDBOX/bin/logger"
 
     # Stub: sleep — accelerates daemon loop by sleeping 0.05s
-    cat > "$SANDBOX/bin/sleep" <<STUB
+    cat >"$SANDBOX/bin/sleep" <<STUB
 #!/usr/bin/env bash
 exec "$real_sleep_path" 0.05
 STUB
     chmod +x "$SANDBOX/bin/sleep"
 
     # Create the cputemp control file (tests write temperatures here)
-    echo "50" > "$SANDBOX/cputemp"
+    echo "50" >"$SANDBOX/cputemp"
 
     # Clean syslog
-    : > "$SANDBOX/syslog"
+    : >"$SANDBOX/syslog"
 }
 
 # Kill daemon + remove sandbox tmp dir.  Returns (does not exit) so multi-scenario
@@ -133,7 +133,7 @@ wait_for_log() {
     local pattern="$1"
     local timeout_s="${2:-10}"
     local elapsed=0
-    while (( elapsed < timeout_s * 10 )); do
+    while ((elapsed < timeout_s * 10)); do
         if grep -q "$pattern" "$SANDBOX/syslog" 2>/dev/null; then
             return 0
         fi
@@ -152,7 +152,7 @@ wait_for_file_value() {
     local expected="$2"
     local timeout_s="${3:-15}"
     local elapsed=0
-    while (( elapsed < timeout_s * 10 )); do
+    while ((elapsed < timeout_s * 10)); do
         local val
         val=$(cat "$file" 2>/dev/null || echo "")
         if [[ "$val" == "$expected" ]]; then
@@ -173,10 +173,10 @@ wait_for_file_gt() {
     local expected="$2"
     local timeout_s="${3:-15}"
     local elapsed=0
-    while (( elapsed < timeout_s * 10 )); do
+    while ((elapsed < timeout_s * 10)); do
         local val
         val=$(cat "$file" 2>/dev/null || echo "0")
-        if (( val > expected )); then
+        if ((val > expected)); then
             return 0
         fi
         /bin/sleep 0.1

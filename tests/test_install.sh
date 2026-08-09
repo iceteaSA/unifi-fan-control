@@ -10,7 +10,7 @@ source "$(dirname "$0")/lib/harness.sh"
 setup_sandbox
 trap teardown_sandbox EXIT
 
-cat > "$SANDBOX/bin/curl" <<'STUB'
+cat >"$SANDBOX/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 while (($# > 0)); do
     if [[ "$1" == -*f* ]]; then
@@ -35,7 +35,7 @@ awk '
     /^get_file\(\) \{/ { capture=1 }
     capture { print }
     capture && /^}$/ { exit }
-' "$REPO_ROOT/install.sh" > "$function_file"
+' "$REPO_ROOT/install.sh" >"$function_file"
 
 SCRIPT_DIR="$SANDBOX/local"
 export BASE_URL="https://example.invalid/missing-branch"

@@ -22,7 +22,7 @@ setup_sandbox
 trap teardown_sandbox EXIT
 
 # Start with healthy sensor, high temp to enter ACTIVE state
-echo "70" > "$SANDBOX/cputemp"
+echo "70" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
@@ -32,7 +32,7 @@ wait_for_log "ACTIVE" 10 || fail "Should reach ACTIVE state"
 wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0 10 || fail "PWM should be > 0 in ACTIVE"
 
 # Now cause sensor failures
-echo "FAIL" > "$SANDBOX/cputemp"
+echo "FAIL" >"$SANDBOX/cputemp"
 
 # Regression: old code reset TEMP_READ_FAILURES every call (subshell loss),
 # so the counter never reached 3 and the fail-safe never triggered.
@@ -52,7 +52,7 @@ wait_for_file_value "$SANDBOX/hwmon/hwmon0/pwm1" "255" 10 || fail "PWM should be
 echo "  ✓ Sensor fail-safe triggers after 3 failures, forces MAX_PWM"
 
 # ── 2. Sensor recovery → fail-safe clears, normal operation resumes ──────────
-echo "70" > "$SANDBOX/cputemp"
+echo "70" >"$SANDBOX/cputemp"
 
 # Wait for the sensor to start working again — TEMP log should reappear
 wait_for_log "TEMP:" 10 || fail "TEMP log should resume after sensor recovery"

@@ -34,7 +34,7 @@ assert_eq "$(calculate_speed 80)" "255" "80C curve value changed: "
 previous=$MIN_PWM
 for ((temp = 61; temp <= 85; temp++)); do
     current=$(calculate_speed "$temp")
-    if (( current < previous )); then
+    if ((current < previous)); then
         fail "curve decreased from ${temp}C-1 (${previous}) to ${temp}C (${current})"
     fi
     previous=$current

@@ -39,14 +39,14 @@ echo "────────────────────────�
 echo "Results: ${#passed[@]} passed, ${#failed[@]} failed, $total total"
 echo "──────────────────────────────────────────────────────"
 
-if (( ${#passed[@]} > 0 )); then
+if ((${#passed[@]} > 0)); then
     echo "PASSED:"
     for t in "${passed[@]}"; do
         echo "  ✓ $t"
     done
 fi
 
-if (( ${#failed[@]} > 0 )); then
+if ((${#failed[@]} > 0)); then
     echo "FAILED:"
     for t in "${failed[@]}"; do
         echo "  ✗ $t"

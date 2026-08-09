@@ -34,11 +34,11 @@ trap teardown_sandbox EXIT
 setup_sandbox
 
 # Force a hot boot: raw temp held high throughout
-echo "70" > "$SANDBOX/cputemp"
+echo "70" >"$SANDBOX/cputemp"
 
 # Pre-seed the persisted temp_state with a stale LOW value that the buggy
 # guard would wrongly accept (raw > saved by 30°C).
-echo "40" > "$FAN_CONTROL_TEMP_STATE_FILE"
+echo "40" >"$FAN_CONTROL_TEMP_STATE_FILE"
 
 # Boot the daemon
 start_daemon

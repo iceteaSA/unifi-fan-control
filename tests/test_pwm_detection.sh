@@ -15,7 +15,7 @@ declare -i scenario=0
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo "50" > "$SANDBOX/cputemp"
+echo "50" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
@@ -31,8 +31,8 @@ cleanup_sandbox
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo 0 > "$SANDBOX/hwmon/hwmon0/fan1_input"
-echo "50" > "$SANDBOX/cputemp"
+echo 0 >"$SANDBOX/hwmon/hwmon0/fan1_input"
+echo "50" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
@@ -56,13 +56,13 @@ setup_sandbox
 # The two branches reach the same FATAL outcome by different guards: non-root
 # fails the write-back probe ("not writable, skipping"), root fails the read
 # that precedes it. Only the non-root path covers the write-back probe itself.
-if (( EUID == 0 )); then
+if ((EUID == 0)); then
     rm "$SANDBOX/hwmon/hwmon0/pwm1"
     mkdir "$SANDBOX/hwmon/hwmon0/pwm1"
 else
     chmod 444 "$SANDBOX/hwmon/hwmon0/pwm1"
 fi
-echo "50" > "$SANDBOX/cputemp"
+echo "50" >"$SANDBOX/cputemp"
 
 start_daemon
 /bin/sleep 1

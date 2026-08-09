@@ -20,7 +20,7 @@ source "$SCRIPT_DIR/lib/harness.sh"
 setup_sandbox
 trap teardown_sandbox EXIT
 
-echo "50" > "$SANDBOX/cputemp"
+echo "50" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive" "Daemon should be running"
@@ -52,7 +52,7 @@ echo "  ✓ Second instance rejected by flock guard"
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive" "First daemon should still be running"
 
 # First, let the daemon enter ACTIVE so PWM is non-zero
-echo "75" > "$SANDBOX/cputemp"
+echo "75" >"$SANDBOX/cputemp"
 wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0 10 || fail "PWM should be > 0 before SIGTERM"
 
 # Now send SIGTERM

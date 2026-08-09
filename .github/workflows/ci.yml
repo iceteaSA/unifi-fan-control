@@ -20,27 +20,22 @@ jobs:
       - name: Install lint tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck shfmt jq
+          sudo apt-get install -y shellcheck shfmt
       - name: Bash syntax
         shell: bash
         run: |
           mapfile -t shell_files < <(git ls-files '*.sh')
           bash -n "${shell_files[@]}"
-      - name: ShellCheck baseline
+      - name: ShellCheck
         shell: bash
         run: |
           mapfile -t shell_files < <(git ls-files '*.sh')
-          set +e
-          shellcheck -f json1 "${shell_files[@]}" > /tmp/shellcheck.json
-          shellcheck_status=$?
-          set -e
-          if (( shellcheck_status > 1 )); then
-              exit "$shellcheck_status"
-          fi
-          jq -r '.comments[] | [.file, ("SC" + (.code | tostring)), .level, .message] | @tsv' /tmp/shellcheck.json \
-            | LC_ALL=C sort > /tmp/shellcheck-current.tsv
-          diff -u .github/shellcheck-baseline.tsv /tmp/shellcheck-current.tsv
-      # Task 7 activates the hard shfmt gate after the Phase 2 reformat.
+          shellcheck "${shell_files[@]}"
+      - name: shfmt
+        shell: bash
+        run: |
+          mapfile -t shell_files < <(git ls-files '*.sh')
+          shfmt -i 4 -ci -d "${shell_files[@]}"
 
   test:
     runs-on: ubuntu-latest
