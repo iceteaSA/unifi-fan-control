@@ -39,6 +39,8 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
    - Add comments for complex logic
    - Update documentation if needed
 3. **Test your changes**:
+   - Run all four local verification gates listed below
+   - Keep pull requests green across the CI Bash/mawk matrix
    - Test on actual hardware if possible
    - Verify all operational states work correctly
    - Check logs for errors or warnings
@@ -79,6 +81,17 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ### Testing
 
+Run the same four local gates used by CI:
+
+```bash
+bash -n fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+bash tests/run-tests.sh
+shellcheck fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+shfmt -i 4 -ci -d fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+```
+
+The sandboxed suite has 9 tests after Phase 0. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2; it does not permit adding new warnings.
+
 When making changes, test the following scenarios:
 
 1. **Cold start**: Script starts with system below MIN_TEMP
@@ -109,6 +122,7 @@ unifi-fan-control/
 ├── TROUBLESHOOTING.md      # Common issues and solutions
 ├── SECURITY.md             # Security policy
 ├── CODE_OF_CONDUCT.md      # Community guidelines
+├── .github/workflows/ci.yml # CI matrix and lint gates
 └── LICENSE                 # MIT License
 ```
 
