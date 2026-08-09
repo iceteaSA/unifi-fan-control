@@ -46,11 +46,13 @@ setup_sandbox() {
 
     # Create stub bin directory PREPENDED to PATH
     mkdir -p "$SANDBOX/bin"
+    local real_sleep_path
+    real_sleep_path=$(command -v sleep)
     export PATH="$SANDBOX/bin:$PATH"
 
     # Stub: ubnt-systool — reads $SANDBOX/cputemp; exits 1 on missing or FAIL
     cat > "$SANDBOX/bin/ubnt-systool" <<'STUB'
-#!/bin/bash
+#!/usr/bin/env bash
 if [[ "$1" != "cputemp" ]]; then
     echo "unknown arg: $*" >&2
     exit 1
@@ -69,15 +71,15 @@ STUB
 
     # Stub: logger — appends arguments to $SANDBOX/syslog
     cat > "$SANDBOX/bin/logger" <<'STUB'
-#!/bin/bash
+#!/usr/bin/env bash
 echo "$@" >> "${SANDBOX:-/tmp}/syslog"
 STUB
     chmod +x "$SANDBOX/bin/logger"
 
     # Stub: sleep — accelerates daemon loop by sleeping 0.05s
-    cat > "$SANDBOX/bin/sleep" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 0.05
+    cat > "$SANDBOX/bin/sleep" <<STUB
+#!/usr/bin/env bash
+exec "$real_sleep_path" 0.05
 STUB
     chmod +x "$SANDBOX/bin/sleep"
 

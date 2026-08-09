@@ -1,0 +1,43 @@
+fan-control.sh	SC1090	warning	ShellCheck can't follow non-constant source. Use a directive to specify location.
+fan-control.sh	SC2046	warning	Quote this to prevent word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2155	warning	Declare and assign separately to avoid masking return values.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
+install.sh	SC2181	style	Check exit code directly with e.g. 'if ! mycmd;', not indirectly with $?.
+tests/lib/harness.sh	SC2034	warning	TEST_DIR appears unused. Verify use (or export if used externally).
+tests/test_config_bootstrap.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_pwm_detection.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_regression_17_lifecycle.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_regression_18_failsafe.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_regression_18_smoothing.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_regression_26_curve.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_regression_26_curve.sh	SC2034	warning	FAN_ACTIVATION_TEMP appears unused. Verify use (or export if used externally).
+tests/test_regression_26_curve.sh	SC2034	warning	MAX_PWM appears unused. Verify use (or export if used externally).
+tests/test_regression_26_curve.sh	SC2034	warning	MAX_TEMP appears unused. Verify use (or export if used externally).
+tests/test_regression_saved_temp_bootstrap.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_state_machine.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).

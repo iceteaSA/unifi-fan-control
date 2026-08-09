@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, UNVR). Pure bash — no build system, no package manager, no CI.
+Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, UNVR). Pure bash — no build system or package manager.
 
 ## What this repo actually is
 
@@ -11,9 +11,16 @@ Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM
 
 ## Verification
 
-- `bash -n fan-control.sh install.sh uninstall.sh` — the only local gate. Passes clean today.
-- `tests/run-tests.sh` — sandboxed test suite (no device, no root needed). All 7 tests pass. Uses `FAN_CONTROL_*` env seams to override device paths for testing.
-- `shellcheck fan-control.sh` has ~36 pre-existing findings; do not treat a nonzero exit as a regression, only avoid adding new ones.
+The four local gates matching CI are:
+
+```bash
+bash -n fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+bash tests/run-tests.sh
+shellcheck fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+shfmt -i 4 -ci -d fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
+```
+
+The sandboxed suite has 9 tests after Phase 0 and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2, not permission to add new warnings.
 - Nothing here runs on a dev machine: the script hard-requires `ubnt-systool` (UniFi-only) and writable `/sys/class/hwmon/*/pwm*`. Real testing means deploying to a device and watching `journalctl -u fan-control.service -f`. CONTRIBUTING.md lists the manual test scenarios (cold start, hot start, state transitions, sensor failure).
 - To test a branch on a device: `sudo FAN_CONTROL_BRANCH=<branch> ./install.sh` (or the curl one-liner against that branch).
 
