@@ -230,6 +230,7 @@ install_environment() {
     env \
         FAN_CONTROL_INSTALL_DIR="$INSTALL_DIR" \
         FAN_CONTROL_SERVICE_FILE="$SERVICE_FILE" \
+        FAN_CONTROL_ALLOW_CHOWN_FAILURE=1 \
         FAN_CONTROL_SYSTEMCTL=systemctl \
         FAN_CONTROL_RELEASE_BASE_URL="https://releases.example.invalid/project/releases" \
         CURL_LOG="$CURL_LOG" \
@@ -254,6 +255,7 @@ install_piped_environment() {
         cat install.sh | env \
             FAN_CONTROL_INSTALL_DIR="$INSTALL_DIR" \
             FAN_CONTROL_SERVICE_FILE="$SERVICE_FILE" \
+            FAN_CONTROL_ALLOW_CHOWN_FAILURE=1 \
             FAN_CONTROL_SYSTEMCTL=systemctl \
             FAN_CONTROL_RELEASE_BASE_URL="https://releases.example.invalid/project/releases" \
             CURL_LOG="$CURL_LOG" \
@@ -499,8 +501,10 @@ test_verified_release_installs_and_preserves_config() {
     install_environment FAN_CONTROL_VERSION=1.2.3
 
     assert_file_set
+    assert_eq "$(stat -c%a "$INSTALL_DIR")" "700" "install directory mode: "
     assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "installed release version: "
     assert_eq "$(cat "$INSTALL_DIR/config")" "MIN_TEMP=48" "config preservation: "
+    assert_eq "$(stat -c%a "$INSTALL_DIR/config")" "600" "installed config mode: "
     assert_eq "$(cat "$SYSTEMCTL_LOG")" $'is-active --quiet fan-control.service\ndaemon-reload\nenable --now fan-control.service\nis-active --quiet fan-control.service' "systemctl order: "
 }
 
