@@ -321,6 +321,7 @@ fi
 detect_pwm_devices() {
     local candidates=()
     local detected=()
+    local writable=()
 
     # Strategy 1: look for pwm files directly in hwmon class directories
     # Works on: UCG-Max (lm63 driver), UNVR (adt7475, kernel exposes class symlinks)
@@ -366,6 +367,7 @@ detect_pwm_devices() {
             logger -t fan-control "DETECT: ${pwm_file} not writable, skipping"
             continue
         fi
+        writable+=("$pwm_file")
 
         if ((rpm > 0)); then
             detected+=("$pwm_file")
@@ -379,10 +381,8 @@ detect_pwm_devices() {
     # (handles cold boot or devices where fans only spin when PWM > 0)
     if [[ ${#detected[@]} -eq 0 ]]; then
         logger -t fan-control "DETECT: No spinning fans found, using all writable PWM channels"
-        for pwm_file in "${candidates[@]}"; do
-            local current_val
-            current_val=$(cat "$pwm_file" 2>/dev/null) || continue
-            echo "$current_val" >"$pwm_file" 2>/dev/null && detected+=("$pwm_file")
+        for pwm_file in "${writable[@]}"; do
+            detected+=("$pwm_file")
         done
     fi
 
@@ -393,6 +393,26 @@ detect_pwm_devices() {
 
     FAN_PWM_DEVICES=("${detected[@]}")
     logger -t fan-control "DETECT: Controlling ${#FAN_PWM_DEVICES[@]} fan(s): ${FAN_PWM_DEVICES[*]}"
+
+    for pwm_file in "${writable[@]}"; do
+        local controlled=false
+        local controlled_pwm
+        local current_val
+
+        for controlled_pwm in "${FAN_PWM_DEVICES[@]}"; do
+            if [[ "$pwm_file" == "$controlled_pwm" ]]; then
+                controlled=true
+                break
+            fi
+        done
+
+        if [[ "$controlled" == false ]]; then
+            current_val=$(cat "$pwm_file" 2>/dev/null) || continue
+            if [[ "$current_val" != 0 ]]; then
+                logger -t fan-control "DETECT: ${pwm_file} = ${current_val} (not controlled)"
+            fi
+        fi
+    done
 }
 
 # Determine PWM devices to control
