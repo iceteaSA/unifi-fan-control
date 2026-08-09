@@ -515,6 +515,13 @@ calculate_speed() {
     local temp_range=$((MAX_TEMP - FAN_ACTIVATION_TEMP))
     local temp_diff=$((avg_temp - FAN_ACTIVATION_TEMP))
 
+    # Clamp to zero below the activation temperature: temp_diff is squared below,
+    # which discards the sign, so a negative diff would otherwise re-inflate PWM
+    # symmetrically with heating — making the fan speed up as the device cools (#26).
+    if (( temp_diff < 0 )); then
+        temp_diff=0
+    fi
+
     # Prevent division by zero
     (( temp_range > 0 )) || temp_range=1
 
