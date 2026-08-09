@@ -566,9 +566,12 @@ DRIVE_LAST_FLOOR_TEMP=0
 DRIVE_LAST_FLOOR_PWM=0
 DRIVE_LAST_CHECK=0
 DRIVE_ALL_READ_FAILURE_LOGGED=false
-LAST_TEMP_LOG=""
-LAST_CALC_LOG=""
-LAST_DEADBAND_LOG=""
+LOG_TEMP_CHANGE_THRESHOLD=2
+LAST_LOGGED_RAW_TEMP=""
+LAST_LOGGED_SMOOTHED_TEMP=""
+LAST_LOGGED_RAW_SMOOTH_DELTA=""
+LAST_LOGGED_CALC_TEMP=""
+LAST_LOGGED_DEADBAND_TEMP=""
 
 # Function to safely write to a file using atomic operations
 atomic_write_file() {
@@ -619,6 +622,25 @@ else
 fi
 
 # MUST be called directly, never via $(...) — state must persist in the parent shell.
+has_meaningful_temp_change() {
+    local current_temp=$1
+    local last_logged_temp=$2
+
+    if [[ -z "$last_logged_temp" ]]; then
+        return 0
+    fi
+
+    local temp_delta=$((current_temp - last_logged_temp))
+    if ((temp_delta < 0)); then
+        temp_delta=$((-temp_delta))
+    fi
+
+    if ((temp_delta >= LOG_TEMP_CHANGE_THRESHOLD)); then
+        return 0
+    fi
+    return 1
+}
+
 get_smoothed_temp() {
     local raw_temp_output
     raw_temp_output=$(ubnt-systool cputemp 2>/dev/null)
@@ -658,10 +680,27 @@ get_smoothed_temp() {
         atomic_write_file "$TEMP_STATE_FILE" "$SMOOTHED_TEMP"
     fi
 
+    local raw_smooth_delta=$((raw_temp - SMOOTHED_TEMP))
+    if ((raw_smooth_delta < 0)); then
+        raw_smooth_delta=$((-raw_smooth_delta))
+    fi
+
+    local smoothing_progress=false
+    # A large raw jump can settle by one final degree; keep that convergence
+    # visible without treating a one-degree raw flutter as new information.
+    if [[ "$raw_temp" == "$LAST_LOGGED_RAW_TEMP" && -n "$LAST_LOGGED_RAW_SMOOTH_DELTA" ]] &&
+        ((raw_smooth_delta < LAST_LOGGED_RAW_SMOOTH_DELTA)); then
+        smoothing_progress=true
+    fi
+
     local temp_log="TEMP:  RAW=${raw_temp}°C | SMOOTH=${SMOOTHED_TEMP}°C | DELTA=$((raw_temp - SMOOTHED_TEMP))°C"
-    if [[ "$temp_log" != "$LAST_TEMP_LOG" ]]; then
+    if has_meaningful_temp_change "$raw_temp" "$LAST_LOGGED_RAW_TEMP" ||
+        has_meaningful_temp_change "$SMOOTHED_TEMP" "$LAST_LOGGED_SMOOTHED_TEMP" ||
+        [[ "$smoothing_progress" == true ]]; then
         logger -t fan-control "$temp_log"
-        LAST_TEMP_LOG=$temp_log
+        LAST_LOGGED_RAW_TEMP=$raw_temp
+        LAST_LOGGED_SMOOTHED_TEMP=$SMOOTHED_TEMP
+        LAST_LOGGED_RAW_SMOOTH_DELTA=$raw_smooth_delta
     fi
 }
 
@@ -706,9 +745,9 @@ log_calculation() {
     fi
 
     local calc_log="CALC: temp_diff=${temp_diff}°C | range=${temp_range}°C | speed=${speed}pwm"
-    if [[ "$calc_log" != "$LAST_CALC_LOG" ]]; then
+    if has_meaningful_temp_change "$avg_temp" "$LAST_LOGGED_CALC_TEMP"; then
         logger -t fan-control "$calc_log"
-        LAST_CALC_LOG=$calc_log
+        LAST_LOGGED_CALC_TEMP=$avg_temp
     fi
 }
 
@@ -1158,9 +1197,9 @@ update_fan_state() {
                             set_fan_speed "$target_speed"
                         else
                             local deadband_log="DEADBAND:  No change | DELTA=${temp_delta}°C"
-                            if [[ "$deadband_log" != "$LAST_DEADBAND_LOG" ]]; then
+                            if has_meaningful_temp_change "$avg_temp" "$LAST_LOGGED_DEADBAND_TEMP"; then
                                 logger -t fan-control "$deadband_log"
-                                LAST_DEADBAND_LOG=$deadband_log
+                                LAST_LOGGED_DEADBAND_TEMP=$avg_temp
                             fi
                         fi
                     fi
