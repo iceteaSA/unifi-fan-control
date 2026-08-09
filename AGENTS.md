@@ -5,7 +5,7 @@ Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM
 ## What this repo actually is
 
 - `fan-control.sh` — the entire application: a single long-running bash daemon (config bootstrap → migration → validation → PWM auto-detection → state machine loop). All logic lives here.
-- `install.sh` / `uninstall.sh` — run ON the UniFi device as root. `install.sh` prefers local files next to itself, otherwise downloads from `raw.githubusercontent.com/iceteaSA/unifi-fan-control/$FAN_CONTROL_BRANCH` (default `main`). Tagged releases (`vX.Y.Z`) are the production identity; installer version pinning is not available yet.
+- `install.sh` / `uninstall.sh` — run ON the UniFi device as root. `install.sh` uses complete local payloads first, then a checksum-verified pinned release (`FAN_CONTROL_VERSION`), an unverified branch (`FAN_CONTROL_BRANCH`), or the latest checksum-verified release. Tagged releases (`vX.Y.Z`) are the production identity.
 - `fan-control.service` — systemd unit installed to `/etc/systemd/system/`; runs `/data/fan-control/fan-control.sh` as root.
 - `VERSION` — repository release identity, stored as bare SemVer and logged at daemon startup.
 - Runtime state on device: `/data/fan-control/{config,temp_state,optimal_pwm}` plus `/var/run/fan-control.pid`.
@@ -21,9 +21,11 @@ shellcheck fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 shfmt -i 4 -ci -d fan-control.sh install.sh uninstall.sh tests/*.sh tests/lib/*.sh
 ```
 
-The sandboxed suite has 11 tests after Phase 3 and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. The ShellCheck baseline in `.github/shellcheck-baseline.tsv` is temporary debt until Phase 2, not permission to add new warnings.
+The sandboxed suite has 11 tests and needs no device or root; it uses `FAN_CONTROL_*` env seams to override device paths. CI tests Bash 4.4, 5.1, 5.2, and native Ubuntu under mawk. ShellCheck and shfmt are both hard-zero — there is no baseline any more.
+
+**Match CI's tool versions or the gates lie.** CI pins `shellcheck v0.11.0` and `shfmt v3.13.1` (see `.github/workflows/ci.yml`). Older ShellCheck emits findings 0.11 dropped — an apt-installed runner once failed on SC2002 that a local 0.11 run passed cleanly, so a green local gate meant nothing. Check with `shellcheck --version` before trusting a local pass.
 - Nothing here runs on a dev machine: the script hard-requires `ubnt-systool` (UniFi-only) and writable `/sys/class/hwmon/*/pwm*`. Real testing means deploying to a device and watching `journalctl -u fan-control.service -f`. CONTRIBUTING.md lists the manual test scenarios (cold start, hot start, state transitions, sensor failure).
-- To test a branch on a device: `sudo FAN_CONTROL_BRANCH=<branch> ./install.sh` (or the curl one-liner against that branch).
+- To test a branch on a device: `sudo FAN_CONTROL_BRANCH=<branch> ./install.sh`. Branch installs are unverified; use a release pin for a checksum-verified deployment.
 
 ## Hard-earned constraints (from CONTRIBUTING.md + code)
 

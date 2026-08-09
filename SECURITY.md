@@ -212,7 +212,7 @@ Security updates will be:
 To apply security updates:
 ```bash
 # Re-run installation (preserves config)
-curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
 
 # Or manual update
 cd unifi-fan-control

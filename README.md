@@ -30,30 +30,34 @@ Confirmed working on: UCG-Max, UCG-Fibre, UXG-Fibre, UDM-SE, UDM-Pro-Max, UDR7, 
 
 ## Installation
 ```bash
-curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
 ```
 
-The `main` branch is the development stream. Tagged releases (`vX.Y.Z`) are the
-production identity for this project. Release Please updates `VERSION` and
-`CHANGELOG.md`, and each release publishes a runtime tarball containing
-`fan-control.sh`, `uninstall.sh`, `fan-control.service`, and `VERSION`, plus a
-separate `SHA256SUMS` file. Installer version pinning is not available yet;
-the current installer command follows `main`.
+By default, the installer resolves the latest tagged release, downloads its
+runtime tarball, and verifies the tarball against that release's `SHA256SUMS`.
+The installed version is recorded in `/data/fan-control/VERSION`.
+
+### Pin a Release
+
+Use a version when you need a known build:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
+```
+
+`FAN_CONTROL_VERSION` accepts `v1.2.0` or `1.2.0`. Pinned installs verify the
+matching release tarball before replacing installed files.
 
 ### Using a Different Branch
-If you want to install from a specific branch (e.g., for testing new features):
+For development builds:
 
-**Method 1: Direct URL**
 ```bash
-# Replace 'dev' with your desired branch name
-curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/dev/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
 ```
 
-**Method 2: Environment Variable**
-```bash
-# Set the branch name via environment variable
-FAN_CONTROL_BRANCH=dev curl -sSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
-```
+Branch installs download individual files from GitHub and are unverified. Do
+not use them for production routers. `FAN_CONTROL_VERSION` and
+`FAN_CONTROL_BRANCH` cannot be used together.
 
 ### Manual Installation
 If you prefer to inspect the code before installation:
@@ -62,14 +66,12 @@ If you prefer to inspect the code before installation:
 git clone https://github.com/iceteaSA/unifi-fan-control.git
 cd unifi-fan-control
 
-# Optionally checkout a specific branch
-# git checkout dev
-
-# Run the installer (you can also use FAN_CONTROL_BRANCH to override the branch)
+# Run the installer from a checkout or extracted release tarball
 sudo ./install.sh
-# Or with a specific branch:
-# sudo FAN_CONTROL_BRANCH=dev ./install.sh
 ```
+
+When all four runtime files are beside `install.sh`, the installer uses those
+local files without a network request.
 
 ## Configuration
 Edit `/data/fan-control/config`:
@@ -241,8 +243,8 @@ systemctl restart fan-control.service  # Apply config changes
 - **fan-control.sh**: The main script that monitors temperature and controls fan speed
 - **VERSION**: Bare SemVer identity for the deployed daemon
 - **install.sh**: Installation script that copies files and sets up the systemd service
-  - Supports installation from different branches via the `FAN_CONTROL_BRANCH` environment variable
-  - Automatically downloads required files if not found locally
+  - Uses local runtime files first, then a pinned release, branch, or latest release
+  - Verifies release tarballs and rejects unsafe archive contents before installation
 - **uninstall.sh**: Script to remove the fan control system
 - **fan-control.service**: Systemd service configuration
 - **tests/**: Sandboxed test suite (no device, no root required); run with `tests/run-tests.sh`
