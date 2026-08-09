@@ -7,6 +7,7 @@
 CONFIG_FILE="${FAN_CONTROL_CONFIG_FILE:-/data/fan-control/config}"
 TEMP_STATE_FILE="${FAN_CONTROL_TEMP_STATE_FILE:-/data/fan-control/temp_state}"
 HWMON_BASE="${FAN_CONTROL_HWMON_BASE:-/sys/class/hwmon}"
+VERSION_FILE="${FAN_CONTROL_VERSION_FILE:-/data/fan-control/VERSION}"
 
 # Define default configuration values
 DEFAULT_MIN_PWM=91                                    # Minimum active fan speed (0-255)
@@ -791,6 +792,11 @@ if ! [[ "$OPTIMAL_PWM" =~ ^[0-9]+$ ]] || ((OPTIMAL_PWM < MIN_PWM || OPTIMAL_PWM 
         logger -t fan-control "FIXED: Updated optimal PWM file with corrected value ${OPTIMAL_PWM}pwm"
     fi
 fi
+FAN_CONTROL_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "unknown")
+if ! [[ "$FAN_CONTROL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    FAN_CONTROL_VERSION="unknown"
+fi
+logger -t fan-control "CONFIG: fan-control v${FAN_CONTROL_VERSION} starting"
 logger -t fan-control "START: Optimal=${OPTIMAL_PWM}pwm | Config: MIN=${MIN_TEMP}°C, MAX=${MAX_TEMP}°C, HYST=${HYSTERESIS}°C"
 
 get_smoothed_temp
