@@ -73,9 +73,33 @@ while (($# > 0)); do
     esac
 done
 
-if [[ "${MOCK_CURL_FAIL:-0}" == 1 ]]; then
-    exit 22
-fi
+    case "${MOCK_CURL_FAIL:-}" in
+        1)
+            exit 22
+            ;;
+        asset-dns)
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (6) Could not resolve host: release-assets.githubusercontent.com" >&2
+                exit 6
+            fi
+            ;;
+        fallback-timeout)
+            if [[ "$url" == *raw.githubusercontent.com/* ]]; then
+                echo "curl: (28) Connection timed out after 10001 milliseconds" >&2
+                exit 28
+            fi
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (6) Could not resolve host: release-assets.githubusercontent.com" >&2
+                exit 6
+            fi
+            ;;
+        archive-http)
+            if [[ "$url" == *.tar.gz ]]; then
+                echo "curl: (22) The requested URL returned error: 404" >&2
+                exit 22
+            fi
+            ;;
+    esac
 
 if [[ -n "$write_format" ]]; then
     printf '%s' "${MOCK_LATEST_URL:?missing latest redirect URL}"
@@ -296,6 +320,16 @@ assert_failed_install_keeps_destination() {
     assert_old_install
 }
 
+assert_failed_install_output() {
+    local output
+
+    if output=$(install_environment "$@" 2>&1); then
+        fail "installer accepted invalid input"
+    fi
+    assert_old_install
+    printf '%s\n' "$output"
+}
+
 assert_file_set() {
     local file
 
@@ -388,6 +422,105 @@ test_curl_failure_keeps_destination() {
     seed_old_install
 
     assert_failed_install_keeps_destination FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=1
+}
+
+test_asset_host_dns_failure_explains_the_redirect() {
+    prepare_case asset-host-dns
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=asset-dns)
+
+    assert_contains "$output" "DNS lookup failed for release-assets.githubusercontent.com" "DNS host diagnosis: "
+    assert_contains "$output" "GitHub redirects release downloads to release-assets.githubusercontent.com" "redirect diagnosis: "
+    assert_contains "$output" "resolver problem, not a fault in the installer or release" "resolver diagnosis: "
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com is reachable for v1.2.3" "fallback reachability: "
+    assert_contains "$output" "curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 bash" "consent command: "
+}
+
+test_http_release_failure_does_not_blame_dns() {
+    prepare_case archive-http
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=archive-http)
+
+    assert_contains "$output" "HTTP error 404 while downloading release v1.2.3" "HTTP diagnosis: "
+    assert_contains "$output" "This is not a DNS resolution failure" "non-DNS diagnosis: "
+    if [[ "$output" == *"resolver problem"* ]]; then
+        fail "HTTP failure was blamed on the resolver: $output"
+    fi
+}
+
+test_unverified_consent_installs_the_failed_release() {
+    prepare_case unverified-consent
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+
+    output=$(install_environment FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 MOCK_CURL_FAIL=asset-dns 2>&1)
+
+    assert_file_set
+    assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "unverified release version: "
+    assert_contains "$output" "WARNING: SHA256 verification will be skipped for release v1.2.3" "pre-install warning: "
+    assert_contains "$output" "WARNING: Installed v1.2.3 without SHA256 verification" "post-install warning: "
+    assert_contains "$(cat "$CURL_LOG")" "raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/fan-control.sh" "unverified release URL: "
+}
+
+test_unverified_consent_still_validates_the_payload() {
+    prepare_case unverified-validation
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    printf 'if then\n' >"$CASE_DIR/branch/fan-control.sh"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 MOCK_CURL_FAIL=asset-dns)
+
+    assert_contains "$output" "Payload scripts failed syntax validation" "unverified payload validation: "
+}
+
+test_unverified_consent_must_match_the_release_tag() {
+    prepare_case unverified-wrong-tag
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.4)
+
+    assert_contains "$output" "FAN_CONTROL_ALLOW_UNVERIFIED must match requested release tag: v1.2.3" "tag mismatch: "
+    assert_eq "$(cat "$CURL_LOG")" "" "tag mismatch made a network call: "
+}
+
+test_unverified_consent_must_name_a_release_tag() {
+    prepare_case unverified-invalid-tag
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 FAN_CONTROL_ALLOW_UNVERIFIED=1)
+
+    assert_contains "$output" "FAN_CONTROL_ALLOW_UNVERIFIED must name a release tag" "tag format: "
+    assert_eq "$(cat "$CURL_LOG")" "" "invalid tag made a network call: "
+}
+
+test_unverified_fallback_reports_when_the_host_is_unreachable() {
+    prepare_case fallback-timeout
+    MOCK_VERSION=1.2.3
+    make_payload_dir "$CASE_DIR/branch" "$MOCK_VERSION"
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=fallback-timeout)
+
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com is not reachable for v1.2.3 (curl exit 28)" "fallback timeout: "
+}
+
+test_unverified_fallback_separates_http_failure_from_reachability() {
+    prepare_case fallback-http
+    MOCK_VERSION=1.2.3
+    seed_old_install
+
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3 MOCK_CURL_FAIL=1)
+
+    assert_contains "$output" "Unverified fallback host raw.githubusercontent.com responded, but the VERSION request failed (curl exit 22)" "fallback HTTP response: "
 }
 
 test_checksum_mismatch_keeps_destination() {
@@ -498,7 +631,7 @@ test_verified_release_installs_and_preserves_config() {
     make_release_fixture "$CASE_DIR" "$MOCK_VERSION"
     printf 'MIN_TEMP=48\n' >"$INSTALL_DIR/config"
 
-    install_environment FAN_CONTROL_VERSION=1.2.3
+    output=$(install_environment FAN_CONTROL_VERSION=1.2.3)
 
     assert_file_set
     assert_eq "$(stat -c%a "$INSTALL_DIR")" "700" "install directory mode: "
@@ -506,6 +639,7 @@ test_verified_release_installs_and_preserves_config() {
     assert_eq "$(cat "$INSTALL_DIR/config")" "MIN_TEMP=48" "config preservation: "
     assert_eq "$(stat -c%a "$INSTALL_DIR/config")" "600" "installed config mode: "
     assert_eq "$(cat "$SYSTEMCTL_LOG")" $'is-active --quiet fan-control.service\ndaemon-reload\nenable --now fan-control.service\nis-active --quiet fan-control.service' "systemctl order: "
+    assert_eq "$output" $'Installing fan-control v1.2.3 from verified release v1.2.3\nPerforming fresh installation\nInstallation successful!\nConfiguration: nano '"$INSTALL_DIR"$'/config\nStatus check: journalctl -u fan-control.service -f' "verified release output: "
 }
 
 test_restart_failure_restores_prior_payload() {
@@ -530,6 +664,14 @@ test_latest_resolves_a_concrete_verified_release
 test_branch_install_is_unverified
 test_version_and_branch_fail_before_network
 test_curl_failure_keeps_destination
+test_asset_host_dns_failure_explains_the_redirect
+test_http_release_failure_does_not_blame_dns
+test_unverified_consent_installs_the_failed_release
+test_unverified_consent_still_validates_the_payload
+test_unverified_consent_must_match_the_release_tag
+test_unverified_consent_must_name_a_release_tag
+test_unverified_fallback_reports_when_the_host_is_unreachable
+test_unverified_fallback_separates_http_failure_from_reachability
 test_checksum_mismatch_keeps_destination
 test_unrelated_checksum_cannot_pass_vacuously
 test_hostile_archives_keep_destination
