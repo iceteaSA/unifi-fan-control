@@ -5,6 +5,13 @@ All notable changes to the UCG Max Fan Control project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/iceteaSA/unifi-fan-control/compare/v1.1.1...v1.2.0) (2026-08-09)
+
+
+### Features
+
+* use drive temperature as an independent PWM floor ([#38](https://github.com/iceteaSA/unifi-fan-control/issues/38)) ([aa46301](https://github.com/iceteaSA/unifi-fan-control/commit/aa46301f934d25922d5acba6c2c967bcb4e5e2c9))
+
 ## [1.1.1](https://github.com/iceteaSA/unifi-fan-control/compare/v1.1.0...v1.1.1) (2026-08-09)
 
 
