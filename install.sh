@@ -125,7 +125,11 @@ validate_archive_header_types() {
     local magic
     local found_end=0
 
+    # ulimit -f kills gzip with SIGXFSZ past the cap. -c 0 because UniFi OS uses a
+    # plain core_pattern filename, so the kill would drop a core into the working
+    # directory -- writing to disk during the check that exists to protect it.
     if ! (
+        ulimit -c 0
         ulimit -f "$((MAX_EXPANDED_ARCHIVE_BYTES / 512 + 1))"
         gzip -dc "$archive" >"$raw_archive"
     ); then
