@@ -1,6 +1,4 @@
 fan-control.sh	SC1090	warning	ShellCheck can't follow non-constant source. Use a directive to specify location.
-fan-control.sh	SC2046	warning	Quote this to prevent word splitting.
-fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
 fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
 fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
 fan-control.sh	SC2086	info	Double quote to prevent globbing and word splitting.
@@ -28,9 +26,9 @@ fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literal
 fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
 fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
 fan-control.sh	SC2254	warning	Quote expansions in case patterns to match literally rather than as a glob.
-install.sh	SC2181	style	Check exit code directly with e.g. 'if ! mycmd;', not indirectly with $?.
-tests/lib/harness.sh	SC2034	warning	TEST_DIR appears unused. Verify use (or export if used externally).
 tests/test_config_bootstrap.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
+tests/test_install.sh	SC1090	warning	ShellCheck can't follow non-constant source. Use a directive to specify location.
+tests/test_install.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
 tests/test_pwm_detection.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
 tests/test_regression_17_lifecycle.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).
 tests/test_regression_18_failsafe.sh	SC1091	info	Not following: ./lib/harness.sh was not specified as input (see shellcheck -x).

@@ -703,7 +703,9 @@ update_fan_state() {
                 if (( avg_temp <= MAX_TEMP - HYSTERESIS )); then
                     state_transition="EMERGENCY→ACTIVE (${avg_temp}°C ≤ $((MAX_TEMP - HYSTERESIS))°C)"
                     CURRENT_STATE=$STATE_ACTIVE
-                    set_fan_speed $(calculate_speed $avg_temp)
+                    local calculated_speed
+                    calculated_speed=$(calculate_speed "$avg_temp")
+                    set_fan_speed "$calculated_speed"
                 else
                     # Stay in emergency mode
                     set_fan_speed $MAX_PWM

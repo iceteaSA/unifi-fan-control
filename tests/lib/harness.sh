@@ -19,7 +19,6 @@ set -euo pipefail
 # ── Paths ────────────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FAN_CONTROL_SCRIPT="${FAN_CONTROL_SCRIPT:-$REPO_ROOT/fan-control.sh}"
-TEST_DIR="$REPO_ROOT/tests"
 
 # ── Sandbox ──────────────────────────────────────────────────────────────────
 # All state lives here.  Created by setup_sandbox, destroyed by teardown_sandbox.

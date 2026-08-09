@@ -53,8 +53,7 @@ get_file() {
         cp "$SCRIPT_DIR/$filename" "$destination"
     else
         echo "Downloading $filename from repository..."
-        curl -sSL "$BASE_URL/$filename" -o "$destination"
-        if [ $? -ne 0 ]; then
+        if ! curl -fsSL "$BASE_URL/$filename" -o "$destination"; then
             echo "Error: Failed to download $filename"
             exit 1
         fi
