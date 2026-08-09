@@ -11,40 +11,88 @@ trap teardown_sandbox EXIT
 
 declare -i scenario=0
 
-# ── Scenario 1: class-dir strategy finds fan with RPM > 0 ────────────────────
+# ── Scenario 1: single spinning fan remains controlled ───────────────────────
 scenario=$((scenario + 1))
 setup_sandbox
 
-echo "50" >"$SANDBOX/cputemp"
+echo "70" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0
 
 assert_contains "$(cat "$SANDBOX/syslog")" "fan1" "should detect fan by name"
 
-echo "  ✓ Scenario ${scenario}: Class-dir detection: fan found"
+echo "  ✓ Scenario ${scenario}: Single spinning fan remains controlled"
 
 stop_daemon
 cleanup_sandbox
 
-# ── Scenario 2: fallback to all-writable when no fan is spinning ─────────────
+# ── Scenario 2: all stopped fans remain controlled ───────────────────────────
 scenario=$((scenario + 1))
 setup_sandbox
 
+echo 0 >"$SANDBOX/hwmon/hwmon0/pwm2"
 echo 0 >"$SANDBOX/hwmon/hwmon0/fan1_input"
-echo "50" >"$SANDBOX/cputemp"
+echo 0 >"$SANDBOX/hwmon/hwmon0/fan2_input"
+echo "70" >"$SANDBOX/cputemp"
 
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm2" 0
 
-assert_contains "$(cat "$SANDBOX/syslog")" "using all writable" "should fall back to all writable"
+assert_contains "$(cat "$SANDBOX/syslog")" "fan1 = 0 RPM" "should report stopped fan as unknown"
 
-echo "  ✓ Scenario ${scenario}: Fallback: all-writable used when no fan spinning"
+echo "  ✓ Scenario ${scenario}: All stopped fans remain controlled"
 
 stop_daemon
 cleanup_sandbox
 
-# ── Scenario 3: non-writable PWM → daemon exits with FATAL ───────────────────
+# ── Scenario 3: partial detection controls a stopped channel ─────────────────
+scenario=$((scenario + 1))
+setup_sandbox
+
+echo 0 >"$SANDBOX/hwmon/hwmon0/pwm2"
+echo 0 >"$SANDBOX/hwmon/hwmon0/fan2_input"
+echo "70" >"$SANDBOX/cputemp"
+
+start_daemon
+assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm2" 0
+
+echo "  ✓ Scenario ${scenario}: Partial detection controls stopped channel"
+
+stop_daemon
+cleanup_sandbox
+
+# ── Scenario 4: excluded channel recovers without restart ────────────────────
+scenario=$((scenario + 1))
+setup_sandbox
+
+mkdir "$SANDBOX/hwmon/hwmon0/pwm2"
+echo 3000 >"$SANDBOX/hwmon/hwmon0/fan2_input"
+echo "70" >"$SANDBOX/cputemp"
+
+start_daemon
+assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
+wait_for_log "pwm2.*unavailable, excluding"
+
+rm -rf "$SANDBOX/hwmon/hwmon0/pwm2"
+echo 0 >"$SANDBOX/hwmon/hwmon0/pwm2"
+wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm2" 0 2
+wait_for_log "pwm2.*writable again, including" 2
+
+exclusion_count=$(grep -c "pwm2.*unavailable, excluding" "$SANDBOX/syslog" || true)
+assert_eq "$exclusion_count" "1" "should log the unchanged exclusion once"
+
+echo "  ✓ Scenario ${scenario}: Excluded channel recovers without restart"
+
+stop_daemon
+cleanup_sandbox
+
+# ── Scenario 5: non-writable PWM → daemon exits with FATAL ───────────────────
 scenario=$((scenario + 1))
 setup_sandbox
 

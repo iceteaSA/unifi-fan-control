@@ -247,6 +247,10 @@ ubnt-systool cputemp
 journalctl -u fan-control.service -n 20 | grep "TEMP:"
 ```
 
+`TEMP:` is logged when the raw or smoothed value changes. A quiet `TEMP:`
+stream is normal at a stable temperature; `STATUS:` remains the heartbeat and
+is written every 10 control cycles.
+
 **Common causes**:
 
 1. **Smoothing effect**: System uses exponential smoothing
@@ -539,6 +543,9 @@ journalctl -u fan-control.service | grep "STATUS:"
 ```bash
 # Temperature trends (last hour)
 journalctl -u fan-control.service --since "1 hour ago" | grep "TEMP:"
+
+# Daemon heartbeat and current temperature
+journalctl -u fan-control.service --since "1 hour ago" | grep "STATUS:"
 
 # PWM adjustments (last hour)
 journalctl -u fan-control.service --since "1 hour ago" | grep "SET:"
