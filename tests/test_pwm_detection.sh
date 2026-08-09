@@ -47,7 +47,15 @@ cleanup_sandbox
 scenario=$((scenario + 1))
 setup_sandbox
 
-chmod 444 "$SANDBOX/hwmon/hwmon0/pwm1"
+# Root can write mode-444 regular files, which is the default user in the
+# official Docker Bash images. A directory keeps the candidate present while
+# making the daemon's write-back probe fail for every user.
+if (( EUID == 0 )); then
+    rm "$SANDBOX/hwmon/hwmon0/pwm1"
+    mkdir "$SANDBOX/hwmon/hwmon0/pwm1"
+else
+    chmod 444 "$SANDBOX/hwmon/hwmon0/pwm1"
+fi
 echo "50" > "$SANDBOX/cputemp"
 
 start_daemon

@@ -41,7 +41,7 @@ echo "70" > "$SANDBOX/cputemp"
 
 # Collect SMOOTH values from TEMP: log lines — all of these are POST-jump.
 # Format: "TEMP:  RAW=70°C | SMOOTH=66°C | DELTA=-4°C"
-smoothed_values=$(grep -oP 'SMOOTH=\K\d+' "$SANDBOX/syslog" 2>/dev/null || true)
+smoothed_values=$(sed -n 's/.*SMOOTH=\([0-9][0-9]*\).*/\1/p' "$SANDBOX/syslog" 2>/dev/null || true)
 
 if [[ -z "$smoothed_values" ]]; then
     echo "--- syslog ---" >&2
