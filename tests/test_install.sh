@@ -175,7 +175,8 @@ append_tar_entry() {
     local name="$2"
     local type="$3"
     local header="$archive.header"
-    local body="${4:-payload}"
+    local body="${4-payload}"
+    local size_mode="${5:-normal}"
     local checksum
     local padding
 
@@ -187,7 +188,11 @@ append_tar_entry() {
     printf '0000644\0' | dd of="$header" bs=1 seek=100 conv=notrunc status=none
     printf '0000000\0' | dd of="$header" bs=1 seek=108 conv=notrunc status=none
     printf '0000000\0' | dd of="$header" bs=1 seek=116 conv=notrunc status=none
-    printf '%011o\0' "${#body}" | dd of="$header" bs=1 seek=124 conv=notrunc status=none
+    if [[ "$size_mode" == empty ]]; then
+        dd if=/dev/zero of="$header" bs=1 seek=124 count=12 conv=notrunc status=none
+    else
+        printf '%011o\0' "${#body}" | dd of="$header" bs=1 seek=124 conv=notrunc status=none
+    fi
     printf '%011o\0' 0 | dd of="$header" bs=1 seek=136 conv=notrunc status=none
     printf '        ' | dd of="$header" bs=1 seek=148 conv=notrunc status=none
     printf '%s' "$type" | dd of="$header" bs=1 seek=156 conv=notrunc status=none
@@ -209,6 +214,98 @@ append_tar_entry() {
         dd if=/dev/zero bs=1 count="$padding" status=none
     } >>"$archive"
     rm -f "$header"
+}
+
+write_archive_checksum() {
+    local archive="$1"
+    local checksum
+
+    checksum=$(sha256sum "$archive" | awk '{print $1}')
+    printf '%s  unifi-fan-control-v%s.tar.gz\n' "$checksum" "$MOCK_VERSION" >"$CASE_DIR/SHA256SUMS"
+}
+
+compress_raw_archive() {
+    local raw_archive="$1"
+    local archive="$2"
+
+    gzip -c "$raw_archive" >"$archive"
+    rm -f "$raw_archive"
+    write_archive_checksum "$archive"
+}
+
+make_handbuilt_release_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+make_lone_zero_block_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    dd if=/dev/zero bs=512 count=1 status=none >>"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 2
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+make_empty_size_archive() {
+    local archive="$1"
+    local raw_archive="$archive.raw"
+
+    : >"$raw_archive"
+    append_tar_entry "$raw_archive" fan-control.sh 0 "" empty
+    append_tar_entry "$raw_archive" ignored 0 ""
+    append_tar_entry "$raw_archive" uninstall.sh 0 $'#!/bin/bash\n'
+    append_tar_entry "$raw_archive" fan-control.service 0 $'[Unit]\n'
+    append_tar_entry "$raw_archive" VERSION 0 "$MOCK_VERSION"
+    dd if=/dev/zero bs=512 count=2 status=none >>"$raw_archive"
+    compress_raw_archive "$raw_archive" "$archive"
+}
+
+stub_tar_for_header_walk() {
+    local real_tar
+
+    real_tar=$(command -v tar)
+    cat >"$SANDBOX/bin/tar" <<STUB
+#!/usr/bin/env bash
+if [[ "\$1" == "-tzf" ]]; then
+    printf '%s\n' fan-control.sh uninstall.sh fan-control.service VERSION
+    exit 0
+fi
+if [[ "\$1" == "-xzf" ]]; then
+    while (( \$# > 0 )); do
+        case "\$1" in
+            -C)
+                payload_dir="\$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    mkdir -p "\$payload_dir"
+    printf '#!/bin/bash\n' >"\$payload_dir/fan-control.sh"
+    printf '#!/bin/bash\n' >"\$payload_dir/uninstall.sh"
+    printf '[Unit]\n' >"\$payload_dir/fan-control.service"
+    printf '%s\n' "$MOCK_VERSION" >"\$payload_dir/VERSION"
+    exit 0
+fi
+exec "$real_tar" "\$@"
+STUB
+    chmod +x "$SANDBOX/bin/tar"
 }
 
 make_hostile_archive() {
@@ -590,6 +687,45 @@ test_hostile_archives_keep_destination() {
     done
 }
 
+test_lone_zero_block_is_rejected_by_header_walk() {
+    local output
+
+    prepare_case lone-zero-block
+    MOCK_VERSION=1.2.3
+    make_lone_zero_block_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+    seed_old_install
+
+    stub_tar_for_header_walk
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3)
+    rm -f "$SANDBOX/bin/tar"
+    assert_contains "$output" "Release archive has a malformed end marker" "lone zero block rejection: "
+}
+
+test_empty_size_field_is_rejected_by_header_walk() {
+    local output
+
+    prepare_case empty-size-field
+    MOCK_VERSION=1.2.3
+    make_empty_size_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+    seed_old_install
+
+    stub_tar_for_header_walk
+    output=$(assert_failed_install_output FAN_CONTROL_VERSION=1.2.3)
+    rm -f "$SANDBOX/bin/tar"
+    assert_contains "$output" "Release archive has an invalid entry size" "empty size field rejection: "
+}
+
+test_handbuilt_well_formed_archive_installs() {
+    prepare_case handbuilt-archive
+    MOCK_VERSION=1.2.3
+    make_handbuilt_release_archive "$CASE_DIR/unifi-fan-control-v${MOCK_VERSION}.tar.gz"
+
+    install_environment FAN_CONTROL_VERSION=1.2.3 >/dev/null
+
+    assert_file_set
+    assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "handbuilt archive version: "
+}
+
 test_syntax_failure_keeps_destination() {
     prepare_case syntax-failure
     MOCK_VERSION=1.2.3
@@ -675,6 +811,9 @@ test_unverified_fallback_separates_http_failure_from_reachability
 test_checksum_mismatch_keeps_destination
 test_unrelated_checksum_cannot_pass_vacuously
 test_hostile_archives_keep_destination
+test_lone_zero_block_is_rejected_by_header_walk
+test_empty_size_field_is_rejected_by_header_walk
+test_handbuilt_well_formed_archive_installs
 test_syntax_failure_keeps_destination
 test_oversized_payload_keeps_destination
 test_oversized_expansion_keeps_destination
