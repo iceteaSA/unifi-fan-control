@@ -47,9 +47,14 @@ cleanup_sandbox
 scenario=$((scenario + 1))
 setup_sandbox
 
-# Root can write mode-444 regular files, which is the default user in the
-# official Docker Bash images. A directory keeps the candidate present while
-# making the daemon's write-back probe fail for every user.
+# Root can write mode-444 regular files, and root is the default user in the
+# official Docker Bash images, so chmod alone cannot make a candidate unusable
+# there. A directory still satisfies the [[ -e ]] candidate scan but fails the
+# daemon's `cat` read, so the channel is rejected for every user.
+#
+# The two branches reach the same FATAL outcome by different guards: non-root
+# fails the write-back probe ("not writable, skipping"), root fails the read
+# that precedes it. Only the non-root path covers the write-back probe itself.
 if (( EUID == 0 )); then
     rm "$SANDBOX/hwmon/hwmon0/pwm1"
     mkdir "$SANDBOX/hwmon/hwmon0/pwm1"
