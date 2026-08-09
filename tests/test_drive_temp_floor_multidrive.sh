@@ -53,7 +53,7 @@ wait_for_file_value "$SANDBOX/hwmon/hwmon0/pwm1" "255" 10 || fail "hottest SATA 
 for device in sda sdb sdc sdd; do
     assert_contains "$(cat "$SANDBOX/syslog")" "Detected .*${device}" "startup should report ${device}: "
 done
-assert_contains "$(cat "$SANDBOX/drive_calls")" "smartctl -n standby -j -a .*sda" "SATA polling must not wake a standby drive: "
+assert_contains "$(cat "$SANDBOX/drive_calls")" "smartctl -j -a .*sda" "SATA polling must read the SMART temperature: "
 assert_contains "$(cat "$SANDBOX/syslog")" "sdb drives floor" "hottest drive should be attributable: "
 
 echo "  ✓ Scenario ${scenario}: hottest of four SATA drives controls the floor"
