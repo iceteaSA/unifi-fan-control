@@ -3,13 +3,19 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and upload assets for (e.g. v0.9.0-rc1). The GitHub release for this tag must already exist."
+        required: true
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -17,19 +23,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: release
+        if: github.event_name == 'push'
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
-        if: steps.release.outputs.release_created == 'true'
-        with:
-          ref: ${{ steps.release.outputs.sha }}
-      - name: Build and verify release assets
-        if: steps.release.outputs.release_created == 'true'
+      - id: target
         shell: bash
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          EVENT: ${{ github.event_name }}
+          RP_CREATED: ${{ steps.release.outputs.release_created }}
+          RP_TAG: ${{ steps.release.outputs.tag_name }}
+          RP_VERSION: ${{ steps.release.outputs.version }}
+          RP_SHA: ${{ steps.release.outputs.sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          build=false; tag=""; version=""; ref=""
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+              tag="$INPUT_TAG"
+              version="${tag#v}"
+              ref="$tag"
+              build=true
+          elif [[ "$RP_CREATED" == "true" ]]; then
+              tag="$RP_TAG"; version="$RP_VERSION"; ref="$RP_SHA"; build=true
+          fi
+          { echo "build=$build"; echo "tag=$tag"; echo "version=$version"; echo "ref=$ref"; } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        if: steps.target.outputs.build == 'true'
+        with:
+          ref: ${{ steps.target.outputs.ref }}
+      - name: Build and verify release assets
+        if: steps.target.outputs.build == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
         run: |
           set -euo pipefail
           test "$(cat VERSION)" = "$VERSION"
@@ -45,11 +73,11 @@ jobs:
           sha256sum "$archive" > SHA256SUMS
           sha256sum -c SHA256SUMS
       - name: Upload release assets
-        if: steps.release.outputs.release_created == 'true'
+        if: steps.target.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
-          VERSION: ${{ steps.release.outputs.version }}
+          TAG_NAME: ${{ steps.target.outputs.tag }}
+          VERSION: ${{ steps.target.outputs.version }}
         run: |
           gh release upload "$TAG_NAME" \
             "unifi-fan-control-v${VERSION}.tar.gz" \
