@@ -8,6 +8,9 @@ Type=simple
 User=root
 WorkingDirectory=/data/fan-control
 ExecStart=/data/fan-control/fan-control.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
 Restart=always
 RestartSec=5
 # 24h window for log rate limiting

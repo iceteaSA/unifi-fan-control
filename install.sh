@@ -349,6 +349,25 @@ replace_destination_files() {
     done
 }
 
+enforce_install_permissions() {
+    if [[ "${FAN_CONTROL_ALLOW_CHOWN_FAILURE:-0}" == 1 ]]; then
+        chown root:root "$INSTALL_DIR" 2>/dev/null || true
+    elif ! chown root:root "$INSTALL_DIR"; then
+        return 1
+    fi
+    if ! chmod 0700 "$INSTALL_DIR"; then
+        return 1
+    fi
+    if [[ -f "$INSTALL_DIR/config" ]]; then
+        if [[ "${FAN_CONTROL_ALLOW_CHOWN_FAILURE:-0}" == 1 ]]; then
+            chown root:root "$INSTALL_DIR/config" 2>/dev/null || true
+        elif ! chown root:root "$INSTALL_DIR/config"; then
+            return 1
+        fi
+        chmod 0600 "$INSTALL_DIR/config" || return 1
+    fi
+}
+
 rollback_install() {
     restore_previous_payload
     "$SYSTEMCTL" daemon-reload >/dev/null 2>&1 || true
@@ -371,6 +390,11 @@ install_validated_payload() {
     if ! replace_destination_files; then
         cleanup_destination_temps
         fail "Failed to replace installation files"
+    fi
+
+    if ! enforce_install_permissions; then
+        rollback_install
+        fail "Failed to enforce installation permissions"
     fi
 
     if ! "$SYSTEMCTL" daemon-reload; then
