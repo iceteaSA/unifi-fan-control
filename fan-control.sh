@@ -316,12 +316,23 @@ if ! command -v ubnt-systool >/dev/null 2>&1; then
 fi
 
 ###[ PWM DEVICE DETECTION ]####################################################
-# Detect all active fan PWM channels
-# Populates the FAN_PWM_DEVICES array with writable PWM paths that have spinning fans
+# Detect writable fan PWM channels and retain their availability state.
+# A zero-RPM reading is not proof that a channel has no fan: shutdown leaves
+# channels at zero, and excluding one can leave a fan permanently uncontrolled.
 detect_pwm_devices() {
     local candidates=()
-    local detected=()
     local writable=()
+    local previous_devices=("${FAN_PWM_DEVICES[@]}")
+    local pwm_file
+    local known_pwm
+    local candidate_known
+    local candidate_present
+    local is_initial_detection=false
+    local devices_changed=false
+
+    if [[ "$PWM_DETECTION_INITIALIZED" == false ]]; then
+        is_initial_detection=true
+    fi
 
     # Strategy 1: look for pwm files directly in hwmon class directories
     # Works on: UCG-Max (lm63 driver), UNVR (adt7475, kernel exposes class symlinks)
@@ -342,13 +353,82 @@ detect_pwm_devices() {
         done
     fi
 
-    if [[ ${#candidates[@]} -eq 0 ]]; then
+    if [[ ${#candidates[@]} -eq 0 && "$is_initial_detection" == true ]]; then
         logger -t fan-control "FATAL: No PWM devices found in /sys"
         exit 1
     fi
 
-    # Filter candidates to channels that are writable and have a spinning fan
+    # Keep checking paths seen before: an absent PWM file must be reported as an
+    # exclusion instead of silently disappearing from the controlled set.
+    for known_pwm in "${KNOWN_PWM_DEVICES[@]}"; do
+        candidate_present=false
+        for pwm_file in "${candidates[@]}"; do
+            if [[ "$known_pwm" == "$pwm_file" ]]; then
+                candidate_present=true
+                break
+            fi
+        done
+        if [[ "$candidate_present" == false ]]; then
+            candidates+=("$known_pwm")
+        fi
+    done
+
+    # Filter candidates to channels whose writable state can be proven.
     for pwm_file in "${candidates[@]}"; do
+        # Test actual writability by writing the current value back
+        # (sysfs file permissions are unreliable — a file may show 644 but still be writable by root)
+        local current_val
+        if ! current_val=$(cat "$pwm_file" 2>/dev/null); then
+            if [[ "${PWM_DEVICE_STATUS[$pwm_file]:-}" != "excluded" ]]; then
+                logger -t fan-control "DETECT: ${pwm_file} unavailable, excluding"
+                devices_changed=true
+            fi
+            PWM_DEVICE_STATUS["$pwm_file"]="excluded"
+            continue
+        fi
+        if ! echo "$current_val" >"$pwm_file" 2>/dev/null; then
+            if [[ "${PWM_DEVICE_STATUS[$pwm_file]:-}" != "excluded" ]]; then
+                logger -t fan-control "DETECT: ${pwm_file} unavailable, excluding"
+                devices_changed=true
+            fi
+            PWM_DEVICE_STATUS["$pwm_file"]="excluded"
+            continue
+        fi
+        writable+=("$pwm_file")
+
+        candidate_known=false
+        for known_pwm in "${KNOWN_PWM_DEVICES[@]}"; do
+            if [[ "$known_pwm" == "$pwm_file" ]]; then
+                candidate_known=true
+                break
+            fi
+        done
+        if [[ "$candidate_known" == false ]]; then
+            KNOWN_PWM_DEVICES+=("$pwm_file")
+        fi
+    done
+
+    if [[ "$is_initial_detection" == true ]]; then
+        if [[ ${#writable[@]} -eq 0 ]]; then
+            logger -t fan-control "FATAL: No writable PWM devices found"
+            exit 1
+        fi
+
+        # MAX_PWM never slows a fan that was already cooling a hot device. Two
+        # seconds clears the measured one-second RPM registration point without
+        # waiting for the six-second settling time.
+        for pwm_file in "${writable[@]}"; do
+            if ! echo "$MAX_PWM" >"$pwm_file" 2>/dev/null; then
+                logger -t fan-control "DETECT: ${pwm_file} unavailable, excluding"
+                PWM_DEVICE_STATUS["$pwm_file"]="excluded"
+            fi
+        done
+        logger -t fan-control "DETECT: Probing writable PWM channels at ${MAX_PWM}pwm for 2s"
+        sleep 2
+    fi
+
+    FAN_PWM_DEVICES=()
+    for pwm_file in "${writable[@]}"; do
         local pwm_dir
         pwm_dir=$(dirname "$pwm_file")
         local pwm_name
@@ -359,64 +439,60 @@ detect_pwm_devices() {
 
         [[ -f "$fan_input" ]] && rpm=$(cat "$fan_input" 2>/dev/null || echo 0)
 
-        # Test actual writability by writing the current value back
-        # (sysfs file permissions are unreliable — a file may show 644 but still be writable by root)
-        local current_val
-        current_val=$(cat "$pwm_file" 2>/dev/null) || continue
-        if ! echo "$current_val" >"$pwm_file" 2>/dev/null; then
-            logger -t fan-control "DETECT: ${pwm_file} not writable, skipping"
-            continue
+        if [[ "${PWM_DEVICE_STATUS[$pwm_file]:-}" == "excluded" ]]; then
+            logger -t fan-control "DETECT: ${pwm_file} writable again, including"
+            devices_changed=true
+            if ((LAST_PWM >= 0)); then
+                if ! echo "$LAST_PWM" >"$pwm_file" 2>/dev/null; then
+                    logger -t fan-control "ERROR: Failed to restore PWM device $pwm_file after detection"
+                    PWM_DEVICE_STATUS["$pwm_file"]="excluded"
+                    continue
+                fi
+            fi
         fi
-        writable+=("$pwm_file")
+        PWM_DEVICE_STATUS["$pwm_file"]="controlled"
+        FAN_PWM_DEVICES+=("$pwm_file")
 
-        if ((rpm > 0)); then
-            detected+=("$pwm_file")
-            logger -t fan-control "DETECT: ${pwm_file} -> fan${fan_num} = ${rpm} RPM (active)"
-        else
-            logger -t fan-control "DETECT: ${pwm_file} -> fan${fan_num} = 0 RPM (skipped)"
+        if [[ "$is_initial_detection" == true ]]; then
+            if ((rpm > 0)); then
+                logger -t fan-control "DETECT: ${pwm_file} -> fan${fan_num} = ${rpm} RPM (active)"
+            else
+                logger -t fan-control "DETECT: ${pwm_file} -> fan${fan_num} = 0 RPM (unknown, controlled)"
+            fi
         fi
     done
 
-    # If no fans were spinning, fall back to all writable PWM channels
-    # (handles cold boot or devices where fans only spin when PWM > 0)
-    if [[ ${#detected[@]} -eq 0 ]]; then
-        logger -t fan-control "DETECT: No spinning fans found, using all writable PWM channels"
-        for pwm_file in "${writable[@]}"; do
-            detected+=("$pwm_file")
-        done
+    if [[ ${#FAN_PWM_DEVICES[@]} -eq 0 ]]; then
+        if [[ "$is_initial_detection" == true ]]; then
+            logger -t fan-control "FATAL: No writable PWM devices found"
+            exit 1
+        fi
+        logger -t fan-control "ERROR: No writable PWM devices found during periodic detection"
     fi
 
-    if [[ ${#detected[@]} -eq 0 ]]; then
-        logger -t fan-control "FATAL: No writable PWM devices found"
-        exit 1
-    fi
-
-    FAN_PWM_DEVICES=("${detected[@]}")
-    logger -t fan-control "DETECT: Controlling ${#FAN_PWM_DEVICES[@]} fan(s): ${FAN_PWM_DEVICES[*]}"
-
-    for pwm_file in "${writable[@]}"; do
-        local controlled=false
-        local controlled_pwm
-        local current_val
-
-        for controlled_pwm in "${FAN_PWM_DEVICES[@]}"; do
-            if [[ "$pwm_file" == "$controlled_pwm" ]]; then
-                controlled=true
+    if [[ ${#previous_devices[@]} -ne ${#FAN_PWM_DEVICES[@]} ]]; then
+        devices_changed=true
+    else
+        for pwm_file in "${!FAN_PWM_DEVICES[@]}"; do
+            if [[ "${FAN_PWM_DEVICES[$pwm_file]}" != "${previous_devices[$pwm_file]}" ]]; then
+                devices_changed=true
                 break
             fi
         done
+    fi
 
-        if [[ "$controlled" == false ]]; then
-            current_val=$(cat "$pwm_file" 2>/dev/null) || continue
-            if [[ "$current_val" != 0 ]]; then
-                logger -t fan-control "DETECT: ${pwm_file} = ${current_val} (not controlled)"
-            fi
-        fi
-    done
+    if [[ "$is_initial_detection" == true || "$devices_changed" == true ]]; then
+        logger -t fan-control "DETECT: Controlling ${#FAN_PWM_DEVICES[@]} fan(s): ${FAN_PWM_DEVICES[*]}"
+    fi
+    PWM_DETECTION_INITIALIZED=true
 }
 
 # Determine PWM devices to control
 FAN_PWM_DEVICES=()
+KNOWN_PWM_DEVICES=()
+declare -A PWM_DEVICE_STATUS=()
+PWM_DETECTION_INITIALIZED=false
+PWM_RECHECK_LOOPS=10
 if [[ "$FAN_PWM_AUTODETECT" != "false" ]]; then
     detect_pwm_devices
 else
@@ -1113,8 +1189,17 @@ get_state_name() {
 
 # Main loop
 declare -i loop_counter=0
+declare -i pwm_recheck_counter=0
 while true; do
     update_fan_state
+
+    if [[ "$FAN_PWM_AUTODETECT" != "false" ]]; then
+        pwm_recheck_counter=$((pwm_recheck_counter + 1))
+        if ((pwm_recheck_counter >= PWM_RECHECK_LOOPS)); then
+            detect_pwm_devices
+            pwm_recheck_counter=0
+        fi
+    fi
 
     # Log status every 10 iterations
     ((loop_counter++ % 10 == 0)) && {
