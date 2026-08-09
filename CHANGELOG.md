@@ -7,58 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 1.0.0 (2026-08-09)
 
+First tagged release. The code has been running on people's routers for months
+— what's new is that it now has a version number, verified downloads, and a
+test suite. Everything below is relative to installing from `main` before today.
 
-### Features
+### Four cooling bugs fixed
 
-* Add comprehensive logging for fan control operations ([f9807a4](https://github.com/iceteaSA/unifi-fan-control/commit/f9807a4cb05ccf54fad5b3f9790455fd8aaee434))
-* Add external configuration file and enhance safety ([ae9e181](https://github.com/iceteaSA/unifi-fan-control/commit/ae9e1813502a7422e80927674467323ac1d43a1d))
-* Add intelligent service management to installer ([6ae13ca](https://github.com/iceteaSA/unifi-fan-control/commit/6ae13ca3e47cfa80cee59a8d043787e9380b8194))
-* add version identity and automated tagged releases ([#29](https://github.com/iceteaSA/unifi-fan-control/issues/29)) ([372168f](https://github.com/iceteaSA/unifi-fan-control/commit/372168f94ebf735c530be2793b25508fd2c34335))
-* clarity ([42cf63f](https://github.com/iceteaSA/unifi-fan-control/commit/42cf63fba6c3aa91667912dc85b902d4e29a97e0))
-* clarity on PWM steps ([fedf707](https://github.com/iceteaSA/unifi-fan-control/commit/fedf70758e513da2e8be6db1068ed2b8a4160220))
-* Enhance logging with current and average temperatures ([9b1523c](https://github.com/iceteaSA/unifi-fan-control/commit/9b1523cc7481a056b59db78f56fa6680e867c997))
-* Enhanced optimal PWM logic. Readme clarity. ([73f6b81](https://github.com/iceteaSA/unifi-fan-control/commit/73f6b81995b28b2eb19a72def32a4375542554c3))
-* Fix locale issues. ([166cf20](https://github.com/iceteaSA/unifi-fan-control/commit/166cf20b1c89c2c915caffdd2d07a36f77e0367c))
-* Fix locale issues. ([9548612](https://github.com/iceteaSA/unifi-fan-control/commit/95486125a61ea570700b5b91d84a487634f3a907))
-* Fix locale issues. ([3d2de09](https://github.com/iceteaSA/unifi-fan-control/commit/3d2de09ee4f07f41fbf2171ee9fb435a12b8fdf2))
-* Fix locale issues. ([a2d9798](https://github.com/iceteaSA/unifi-fan-control/commit/a2d979803ee45c9c4f0e70ce87880bc889c332f3))
-* Fix locale issues. ([9ce0056](https://github.com/iceteaSA/unifi-fan-control/commit/9ce0056e641f68dbceef49ac043dcda4bbeeeee4))
-* Implement three-state fan control logic with rolling average and taper period ([72de836](https://github.com/iceteaSA/unifi-fan-control/commit/72de836c4869dfea7728b30d53eb50fbd485f519))
-* Improve error handling with atomic writes and logging ([f027d5d](https://github.com/iceteaSA/unifi-fan-control/commit/f027d5d0816b242c33487a9bae619ef67b6869d4))
-* Improved error handling and structure ([e89185d](https://github.com/iceteaSA/unifi-fan-control/commit/e89185d29d48083a79215c01d15aef6ad67bca38))
-* Integrate Covert-Agenda's heuristic logic and streamline README ([ebe8e2e](https://github.com/iceteaSA/unifi-fan-control/commit/ebe8e2e1c68db9e82c63b9e87613ea998eac12ed))
-* log the deployed fan-control version ([476d02c](https://github.com/iceteaSA/unifi-fan-control/commit/476d02c3fd38fcd82ac3ad896c7cd92722cbf74d))
-* logging limits ([99efddc](https://github.com/iceteaSA/unifi-fan-control/commit/99efddccd84706cbfb2d832e89029cd183ee62b8))
-* overhaul fan control algorithm and logging ([ddb380c](https://github.com/iceteaSA/unifi-fan-control/commit/ddb380c9f01f9592ffb27c9d7e2b85f70174584e))
-* Refactor temperature smoothing and PWM logic for better precision and reliability ([77dd413](https://github.com/iceteaSA/unifi-fan-control/commit/77dd4133bb70436940e72e6bd2be2775b33f1416))
+* **Fan sped up as the device cooled** ([#26](https://github.com/iceteaSA/unifi-fan-control/issues/26)) — `calculate_speed` squared a signed `temp_diff`, mirroring the response curve below the activation temperature. Between `MIN_TEMP` and `FAN_ACTIVATION_TEMP` the fan got *louder* as the router got cooler, and 60 °C produced the same PWM as 70 °C. A reporter measured 603 PWM writes in 21 hours on an idle UCG-Fiber.
+* **Sensor fail-safe never fired** ([#18](https://github.com/iceteaSA/unifi-fan-control/issues/18)) — `get_smoothed_temp` was called through `$(...)`, so its failure counter and smoothed temperature died in the subshell. The 3-strike fail-safe that forces `MAX_PWM` on sensor failure was unreachable code, and temperature smoothing never accumulated.
+* **Cleanup trap fired at startup** ([#17](https://github.com/iceteaSA/unifi-fan-control/issues/17)) — the trap and `flock` were registered inside a subshell that exited immediately, so the PID file was deleted at launch, exit cleanup never ran, and the single-instance guard did nothing.
+* **Stale temperature reused on hot restart** ([#22](https://github.com/iceteaSA/unifi-fan-control/issues/22)) — the guard on the persisted temperature stripped the minus sign from each operand instead of computing `|saved - raw|`, so it only protected one direction. A hot boot with a stale low value kept the fan off for a full check interval.
 
+### Verified installs
 
-### Bug Fixes
+* Releases are tagged, and each one ships a tarball plus `SHA256SUMS`.
+* `install.sh` downloads, verifies the checksum, validates every archive entry, and syntax-checks the scripts before anything is written to `/data`. Archive entries are checked by raw tar header, not just filename, so an archive carrying a symlink under a legitimate name is rejected.
+* Pin a version with `FAN_CONTROL_VERSION=v1.0.0`; omit it to get the latest release.
+* Previously the installer fetched loose files from `main`, and a 404 could be written to disk and executed as root, because `curl` was called without `-f`.
 
-* accept SemVer prerelease versions in the startup log ([435edc2](https://github.com/iceteaSA/unifi-fan-control/commit/435edc24d2ad9c56aaea8d0d017531f52a805758))
-* clamp sub-activation temp_diff so fan does not speed up while cooling ([9beba63](https://github.com/iceteaSA/unifi-fan-control/commit/9beba63f7f7cc6564b9546c740d84c4725a6ed03)), closes [#26](https://github.com/iceteaSA/unifi-fan-control/issues/26)
-* clamp sub-activation temp_diff so fan does not speed up while cooling ([#26](https://github.com/iceteaSA/unifi-fan-control/issues/26)) ([c2c6c51](https://github.com/iceteaSA/unifi-fan-control/commit/c2c6c51bb6350017efc1becd925ee1ace0f6daf7))
-* compute real |saved-raw| absolute difference in saved-temp bootstrap ([#22](https://github.com/iceteaSA/unifi-fan-control/issues/22)) ([8c82c2a](https://github.com/iceteaSA/unifi-fan-control/commit/8c82c2aad408c1f0021b8c8ae27b1024a660c5b5))
-* Correct variable handling in fan control transitions ([b7f90c2](https://github.com/iceteaSA/unifi-fan-control/commit/b7f90c24a1474d63598e63b03880417c8034d370))
-* curve ([cfa5071](https://github.com/iceteaSA/unifi-fan-control/commit/cfa5071eb075d84a314505db107f8c0784e073e6))
-* curve ([358c84b](https://github.com/iceteaSA/unifi-fan-control/commit/358c84b7f2a7a5c7997a2962a64739dc7c8eb2c8))
-* curve ([9d2bc8b](https://github.com/iceteaSA/unifi-fan-control/commit/9d2bc8b5a84220d0e99ad9f9c2f0066d17c18f11))
-* curve ([2456d0a](https://github.com/iceteaSA/unifi-fan-control/commit/2456d0a857245bf0c7657baaa05957c139bbf205))
-* Ensure fan PWM is set to 0 during uninstallation to prevent unintended behavior ([24c7fd9](https://github.com/iceteaSA/unifi-fan-control/commit/24c7fd9bb20e9ee7aa8c089a29173268a22de4a7))
-* logging ([70ae391](https://github.com/iceteaSA/unifi-fan-control/commit/70ae39102ca5e3f90b902b7a716ae145b67fc5b1))
-* logging ([e87be52](https://github.com/iceteaSA/unifi-fan-control/commit/e87be5280c4a1f991174599518612ebc180b17c9))
-* logging ([609db7e](https://github.com/iceteaSA/unifi-fan-control/commit/609db7e0cc090b202cef2f61a6301287c382e0a5))
-* logging ([372a9d4](https://github.com/iceteaSA/unifi-fan-control/commit/372a9d41e584d3524eee17f2bfaed326734c2929))
-* logging ([1306346](https://github.com/iceteaSA/unifi-fan-control/commit/1306346b7a95263be0a680ab98b87fce38c60c86))
-* make test harness stubs portable across bash images ([cc379b7](https://github.com/iceteaSA/unifi-fan-control/commit/cc379b78da10ba098a2b94189a3a6dd37a6710d6))
-* min pwm ([2cc66b5](https://github.com/iceteaSA/unifi-fan-control/commit/2cc66b5fd3df05f9129fc3614651d39dfd5d607d))
-* off state ([6f9f819](https://github.com/iceteaSA/unifi-fan-control/commit/6f9f819b82c3c6f09f4628a18ff4f622f10a4c57))
-* PID ([f3a069c](https://github.com/iceteaSA/unifi-fan-control/commit/f3a069ce274c19db29d05a899080e24eb6af3040))
-* register cleanup trap and instance lock in parent shell, make sensor fail-safe fire ([#17](https://github.com/iceteaSA/unifi-fan-control/issues/17), [#18](https://github.com/iceteaSA/unifi-fan-control/issues/18)) ([281e49a](https://github.com/iceteaSA/unifi-fan-control/commit/281e49a51abf37063a905978690c063ba613fcdf))
-* Replace incorrect temperature unit symbols in logs ([c7ad108](https://github.com/iceteaSA/unifi-fan-control/commit/c7ad108d1ad5dec42d5880b6cfbb4cd6039d4df5))
-* resolve substantive shellcheck findings ([b1824dc](https://github.com/iceteaSA/unifi-fan-control/commit/b1824dc2f36d8bb427dba5a23d0b0ef222817d5a))
-* safety trap, sensor fail-safe, and test suite ([#17](https://github.com/iceteaSA/unifi-fan-control/issues/17), [#18](https://github.com/iceteaSA/unifi-fan-control/issues/18)) ([6959dc5](https://github.com/iceteaSA/unifi-fan-control/commit/6959dc59516deadd6403139fa0370b3347b5060e))
-* start temp ([6da8722](https://github.com/iceteaSA/unifi-fan-control/commit/6da8722fa895570b5fa01310814446b37e60658c))
+### Version identity
+
+The daemon logs `CONFIG: fan-control vX.Y.Z starting`, and `VERSION` is installed alongside it. Previously there was no way to tell which build a device was running short of hashing the script against git history.
+
+### Testing and CI
+
+* 11 sandboxed tests that need no device and no root, including a regression test per bug above.
+* CI runs them on bash 4.4, 5.1, 5.2 and native Ubuntu, all under mawk — matching the UCG-Max, which runs bash 5.1.4 and mawk 1.3.4.
+* shellcheck and shfmt are enforced at zero findings.
 
 ## [Unreleased]
 
