@@ -584,14 +584,29 @@ not bash, and nothing is installed when this happens — it fails on the first c
 
 Four separate things block it, not one: no bash (the daemon uses `[[ ]]`, `(( ))` and
 arrays throughout), no `ubnt-systool` for CPU temperature, no systemd, and fans that are
-typically firmware controlled rather than exposed to userspace.
+firmware controlled rather than exposed to userspace.
 
-To check whether your device exposes fans at all:
+The last one is the decisive one, and it is measured rather than assumed. On a USW
+Enterprise 48 PoE running 7.5.9:
+
+```
+# ls /sys/class/hwmon/*/pwm* 2>/dev/null || echo "no pwm files"
+no pwm files
+```
+
+No PWM files means the fans are not reachable from userspace at all, so no script can
+control them — a POSIX `sh` rewrite with a different temperature source would still have
+nothing to write to.
+
+To check your own device:
 
 ```sh
 ls /sys/class/hwmon/*/pwm* 2>/dev/null || echo "no pwm files"
 command -v ubnt-systool || echo "no ubnt-systool"
 ```
+
+If the first command ever starts printing paths after a firmware update, that changes the
+answer — worth re-checking after a major version jump.
 
 No output from the first means the fans are not software-controllable there, and no
 script of any kind will help.
