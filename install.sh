@@ -7,8 +7,13 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Installer-only path and command seams support sandboxed tests.
+INSTALL_DIR="${FAN_CONTROL_INSTALL_DIR:-/data/fan-control}"
+SERVICE_FILE="${FAN_CONTROL_SERVICE_FILE:-/etc/systemd/system/fan-control.service}"
+SYSTEMCTL="${FAN_CONTROL_SYSTEMCTL:-systemctl}"
+
 # Check for systemd availability
-if ! command -v systemctl >/dev/null 2>&1; then
+if ! command -v "$SYSTEMCTL" >/dev/null 2>&1; then
     echo "Error: systemd is required but not found"
     exit 1
 fi
@@ -31,14 +36,14 @@ echo "Installing from branch: $BRANCH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Create directory for fan control
-mkdir -p /data/fan-control || {
-    echo "Error: Failed to create directory /data/fan-control"
+mkdir -p "$INSTALL_DIR" || {
+    echo "Error: Failed to create directory $INSTALL_DIR"
     exit 1
 }
 
 # Check if directory is writable
-if [ ! -w "/data/fan-control" ]; then
-    echo "Error: Directory /data/fan-control is not writable"
+if [ ! -w "$INSTALL_DIR" ]; then
+    echo "Error: Directory $INSTALL_DIR is not writable"
     exit 1
 fi
 
@@ -61,15 +66,14 @@ get_file() {
 }
 
 # Get fan control script
-get_file "fan-control.sh" "/data/fan-control/fan-control.sh"
-chmod +x /data/fan-control/fan-control.sh
+get_file "fan-control.sh" "$INSTALL_DIR/fan-control.sh"
+chmod +x "$INSTALL_DIR/fan-control.sh"
 
 # Get uninstall script
-get_file "uninstall.sh" "/data/fan-control/uninstall.sh"
-chmod +x /data/fan-control/uninstall.sh
+get_file "uninstall.sh" "$INSTALL_DIR/uninstall.sh"
+chmod +x "$INSTALL_DIR/uninstall.sh"
 
 # Install systemd service
-SERVICE_FILE="/etc/systemd/system/fan-control.service"
 get_file "fan-control.service" "$SERVICE_FILE"
 
 # Verify service file was created
@@ -80,15 +84,15 @@ fi
 
 # Configure systemd service
 echo "Reloading systemd configuration..."
-systemctl daemon-reload || {
+"$SYSTEMCTL" daemon-reload || {
     echo "Error: Failed to reload systemd configuration"
     exit 1
 }
 
 # Smart service management
-if systemctl is-active --quiet fan-control.service; then
+if "$SYSTEMCTL" is-active --quiet fan-control.service; then
     echo "Service already running - performing hot update"
-    if ! systemctl restart fan-control.service; then
+    if ! "$SYSTEMCTL" restart fan-control.service; then
         echo "Error: Failed to restart service"
         echo "Check service status with: systemctl status fan-control.service"
         exit 1
@@ -96,7 +100,7 @@ if systemctl is-active --quiet fan-control.service; then
     echo "Service successfully updated and restarted"
 else
     echo "Performing fresh installation"
-    if ! systemctl enable --now fan-control.service; then
+    if ! "$SYSTEMCTL" enable --now fan-control.service; then
         echo "Error: Failed to enable and start service"
         echo "Check service status with: systemctl status fan-control.service"
         exit 1
@@ -105,5 +109,5 @@ else
 fi
 
 echo "Installation successful!"
-echo "Configuration: nano /data/fan-control/config"
+echo "Configuration: nano $INSTALL_DIR/config"
 echo "Status check: journalctl -u fan-control.service -f"
