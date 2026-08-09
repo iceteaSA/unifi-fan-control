@@ -5,6 +5,15 @@ All notable changes to the UCG Max Fan Control project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+* Diagnose failed verified-release downloads by curl failure class. DNS failures
+  now name the failing host and explain GitHub's release-asset redirect.
+* Add a tag-scoped `FAN_CONTROL_ALLOW_UNVERIFIED` fallback for a verified download
+  that cannot complete. The fallback is explicit and still validates its payload.
+
 ## [1.2.0](https://github.com/iceteaSA/unifi-fan-control/compare/v1.1.1...v1.2.0) (2026-08-09)
 
 
