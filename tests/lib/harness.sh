@@ -79,14 +79,19 @@ echo "$@" >> "${SANDBOX:-/tmp}/syslog"
 STUB
     chmod +x "$SANDBOX/bin/logger"
 
-    # Stubs: drive tools read controlled JSON fixtures or fail when requested.
+    # Stubs: drive tools select per-device fixtures and failures when requested.
     cat >"$SANDBOX/bin/nvme" <<'STUB'
 #!/usr/bin/env bash
 echo "nvme $*" >> "${SANDBOX:-/tmp}/drive_calls"
-if [[ -f "${SANDBOX:-/tmp}/nvme_fail" ]]; then
+device="${!#}"
+device_name="${device##*/}"
+if [[ -f "${SANDBOX:-/tmp}/nvme_fail" || -f "${SANDBOX:-/tmp}/nvme_fail_${device_name}" ]]; then
     exit 1
 fi
-response_file="${SANDBOX:-/tmp}/nvme_response"
+response_file="${SANDBOX:-/tmp}/nvme_response_${device_name}"
+if [[ ! -f "$response_file" ]]; then
+    response_file="${SANDBOX:-/tmp}/nvme_response"
+fi
 [[ -f "$response_file" ]] || exit 1
 cat "$response_file"
 STUB
@@ -95,10 +100,19 @@ STUB
     cat >"$SANDBOX/bin/smartctl" <<'STUB'
 #!/usr/bin/env bash
 echo "smartctl $*" >> "${SANDBOX:-/tmp}/drive_calls"
-if [[ -f "${SANDBOX:-/tmp}/smartctl_fail" ]]; then
+device="${!#}"
+device_name="${device##*/}"
+if [[ -f "${SANDBOX:-/tmp}/smartctl_standby_${device_name}" ]]; then
+    echo "Device is in STANDBY mode, exit(2)" >&2
+    exit 2
+fi
+if [[ -f "${SANDBOX:-/tmp}/smartctl_fail" || -f "${SANDBOX:-/tmp}/smartctl_fail_${device_name}" ]]; then
     exit 1
 fi
-response_file="${SANDBOX:-/tmp}/smartctl_response"
+response_file="${SANDBOX:-/tmp}/smartctl_response_${device_name}"
+if [[ ! -f "$response_file" ]]; then
+    response_file="${SANDBOX:-/tmp}/smartctl_response"
+fi
 [[ -f "$response_file" ]] || exit 1
 cat "$response_file"
 STUB
