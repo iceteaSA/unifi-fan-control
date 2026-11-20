@@ -66,7 +66,7 @@ representative at an online or offline event.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement via:
 
-- GitHub issues: https://github.com/iceteaSA/unifi-fan-control/issues
+- GitHub issues: https://github.com/marcel1337x/unifi-fan-control/issues
 - GitHub discussions
 - Direct message to project maintainers
 

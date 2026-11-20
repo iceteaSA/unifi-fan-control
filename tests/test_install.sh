@@ -533,7 +533,7 @@ test_asset_host_dns_failure_explains_the_redirect() {
     assert_contains "$output" "GitHub redirects release downloads to release-assets.githubusercontent.com" "redirect diagnosis: "
     assert_contains "$output" "resolver problem, not a fault in the installer or release" "resolver diagnosis: "
     assert_contains "$output" "Unverified fallback host raw.githubusercontent.com is reachable for v1.2.3" "fallback reachability: "
-    assert_contains "$output" "curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 bash" "consent command: "
+    assert_contains "$output" "curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/v1.2.3/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.3 bash" "consent command: "
 }
 
 test_http_release_failure_does_not_blame_dns() {
@@ -562,7 +562,7 @@ test_unverified_consent_installs_the_failed_release() {
     assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "unverified release version: "
     assert_contains "$output" "WARNING: SHA256 verification will be skipped for release v1.2.3" "pre-install warning: "
     assert_contains "$output" "WARNING: Installed v1.2.3 without SHA256 verification" "post-install warning: "
-    assert_contains "$(cat "$CURL_LOG")" "raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.3/fan-control.sh" "unverified release URL: "
+    assert_contains "$(cat "$CURL_LOG")" "raw.githubusercontent.com/marcel1337x/unifi-fan-control/v1.2.3/fan-control.sh" "unverified release URL: "
 }
 
 test_unverified_consent_still_validates_the_payload() {

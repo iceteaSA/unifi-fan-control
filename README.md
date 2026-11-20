@@ -37,7 +37,7 @@ consoles and gateways running full UniFi OS.
 
 ## Installation
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo bash
 ```
 
 By default, the installer resolves the latest tagged release, downloads its
@@ -49,7 +49,7 @@ The installed version is recorded in `/data/fan-control/VERSION`.
 Use a version when you need a known build:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
 ```
 
 `FAN_CONTROL_VERSION` accepts `v1.2.0` or `1.2.0`. Pinned installs verify the
@@ -68,7 +68,7 @@ resolver cannot be fixed immediately, a one-time fallback is available for one
 specific tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
 ```
 
 This bypasses SHA256 verification for that install. It still validates the
@@ -79,7 +79,7 @@ downloaded files before writing them, but it is not the normal or preferred path
 For development builds:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
 ```
 
 Branch installs download individual files from GitHub and are unverified. Do
@@ -90,7 +90,7 @@ not use them for production routers. `FAN_CONTROL_VERSION` and
 If you prefer to inspect the code before installation:
 ```bash
 # Clone the repository
-git clone https://github.com/iceteaSA/unifi-fan-control.git
+git clone https://github.com/marcel1337x/unifi-fan-control.git
 cd unifi-fan-control
 
 # Run the installer from a checkout or extracted release tarball
@@ -292,7 +292,7 @@ Re-run the installer. There is no auto-update: this runs as root, and a self-upd
 root daemon is a large attack surface for a fan controller.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo bash
 ```
 
 **Your config is preserved.** `/data/fan-control/config` is never overwritten by an
@@ -326,11 +326,11 @@ with it, that was the overlay rather than this script. Reinstall with the one-li
 
 ## Star History
 
-<a href="https://www.star-history.com/?type=date&repos=iceteaSA%2Funifi-fan-control">
+<a href="https://www.star-history.com/?type=date&repos=marcel1337x%2Funifi-fan-control">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=iceteaSA/unifi-fan-control&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=iceteaSA/unifi-fan-control&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=iceteaSA/unifi-fan-control&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=marcel1337x/unifi-fan-control&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=marcel1337x/unifi-fan-control&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=marcel1337x/unifi-fan-control&type=date&legend=top-left" />
  </picture>
 </a>
 

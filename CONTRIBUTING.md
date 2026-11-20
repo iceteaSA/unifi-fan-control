@@ -171,7 +171,7 @@ unverified branch.
 
 - Check existing [documentation](README.md)
 - Review [troubleshooting guide](TROUBLESHOOTING.md)
-- Search existing [issues](https://github.com/iceteaSA/unifi-fan-control/issues)
+- Search existing [issues](https://github.com/marcel1337x/unifi-fan-control/issues)
 - Create a new issue with detailed information
 
 ## Recognition

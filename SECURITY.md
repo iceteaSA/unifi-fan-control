@@ -49,7 +49,7 @@ The UCG Max Fan Control system is designed with security and safety in mind:
 1. **Verify source**:
    ```bash
    # Clone and inspect before running
-   git clone https://github.com/iceteaSA/unifi-fan-control.git
+   git clone https://github.com/marcel1337x/unifi-fan-control.git
    cd unifi-fan-control
 
    # Review scripts
@@ -157,11 +157,11 @@ The UCG Max Fan Control system is designed with security and safety in mind:
 **For security vulnerabilities**, please report via:
 
 1. **GitHub Security Advisories** (preferred):
-   - Go to: https://github.com/iceteaSA/unifi-fan-control/security/advisories
+   - Go to: https://github.com/marcel1337x/unifi-fan-control/security/advisories
    - Click "Report a vulnerability"
 
 2. **GitHub Issues** (for less critical issues):
-   - https://github.com/iceteaSA/unifi-fan-control/issues
+   - https://github.com/marcel1337x/unifi-fan-control/issues
    - Tag with `security` label
 
 3. **Direct contact** (for critical vulnerabilities):
@@ -212,7 +212,7 @@ Security updates will be:
 To apply security updates:
 ```bash
 # Re-run installation (preserves config)
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo bash
 
 # Or manual update
 cd unifi-fan-control

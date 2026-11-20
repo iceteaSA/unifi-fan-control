@@ -401,7 +401,7 @@ cat /data/fan-control/config
 The default installer uses the latest tagged release. To retry a known release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_VERSION=v1.2.0 bash
 ```
 
 The installer verifies the downloaded tarball against the matching
@@ -425,7 +425,7 @@ reachable. If it is reachable and the resolver cannot be fixed immediately, use
 the exact tag from the error message to opt in to the fallback:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/v1.2.0/install.sh | sudo FAN_CONTROL_ALLOW_UNVERIFIED=v1.2.0 bash
 ```
 
 This is a deliberate one-install exception. It downloads tagged files from
@@ -440,10 +440,10 @@ release path remains the right fix.
 Branch installs are for development only and are not checksum-verified.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iceteaSA/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
+curl -fsSL https://raw.githubusercontent.com/marcel1337x/unifi-fan-control/main/install.sh | sudo FAN_CONTROL_BRANCH=feature/example bash
 
 # Or install local runtime files from a checkout
-git clone https://github.com/iceteaSA/unifi-fan-control.git
+git clone https://github.com/marcel1337x/unifi-fan-control.git
 cd unifi-fan-control
 sudo ./install.sh
 ```
@@ -580,7 +580,7 @@ If you're still experiencing issues:
    - Configuration file
    - Steps to reproduce
 
-3. **Check existing issues**: https://github.com/iceteaSA/unifi-fan-control/issues
+3. **Check existing issues**: https://github.com/marcel1337x/unifi-fan-control/issues
 
 ---
 

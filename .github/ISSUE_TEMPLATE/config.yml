@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentation
-    url: https://github.com/iceteaSA/unifi-fan-control/blob/main/README.md
+    url: https://github.com/marcel1337x/unifi-fan-control/blob/main/README.md
     about: Read the project documentation
   - name: Troubleshooting Guide
-    url: https://github.com/iceteaSA/unifi-fan-control/blob/main/TROUBLESHOOTING.md
+    url: https://github.com/marcel1337x/unifi-fan-control/blob/main/TROUBLESHOOTING.md
     about: Check common issues and solutions
   - name: Security Policy
-    url: https://github.com/iceteaSA/unifi-fan-control/blob/main/SECURITY.md
+    url: https://github.com/marcel1337x/unifi-fan-control/blob/main/SECURITY.md
     about: Report security vulnerabilities
