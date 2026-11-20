@@ -127,6 +127,7 @@ DEADBAND=1        # Temperature stability threshold (°C)
 LEARNING_RATE=5   # Hourly PWM optimization step size
 TAPER_MINS=90     # Cool-down duration (minutes)
 CHECK_INTERVAL=15 # Temperature check frequency (seconds)
+LOG_LEVEL=info    # Log verbosity: error, warn, info or debug (see Monitoring & Logging)
 
 # Auto-detects all active fan channels by default (recommended)
 # Set to false to use FAN_PWM_DEVICE as a single manual override instead
@@ -160,12 +161,23 @@ systemctl restart fan-control.service
 - **EMERGENCY → ACTIVE**: Temperature drops significantly below critical level (80°C, with 5°C hysteresis)
 
 ## Monitoring & Logging
+`LOG_LEVEL` decides which messages are written. Each level includes the ones above it:
+
+| `LOG_LEVEL` | Adds | Journal priority |
+|-------------|------|------------------|
+| `error` | `FATAL`, `ERROR` (always written) | `err` |
+| `warn` | `ALERT`, `WARNING` | `warning` |
+| `info` (default) | state changes, speed changes, startup, detection, drives, learning, `STATUS` heartbeat | `info` |
+| `debug` | per-cycle `TEMP`, `CALC`, `DEADBAND` diagnostics | `debug` |
+
+Messages below the configured level are never sent, so they don't count towards the service's daily journal limit. Use `debug` while tuning, then go back to `info`.
+
 Key operational signals:
 ```log
-# Temperature Monitoring
+# Temperature Monitoring (debug)
 TEMP: RAW=68℃ | SMOOTH=65℃ | DELTA=-3℃
 
-# Speed Calculations
+# Speed Calculations (debug)
 CALC: temp_diff=5℃ | range=20℃ | speed=100pwm
 
 # State Transitions
@@ -213,6 +225,7 @@ View logs with:
 ```bash
 journalctl -u fan-control.service -f          # Live monitoring
 journalctl -u fan-control.service --since "10 minutes ago"  # Recent history
+journalctl -u fan-control.service -p warning  # Warnings and errors only
 ```
 
 ## Technical Implementation

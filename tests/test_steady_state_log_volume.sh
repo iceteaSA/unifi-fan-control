@@ -36,6 +36,7 @@ cleanup_sandbox
 setup_sandbox
 
 echo "66" >"$SANDBOX/cputemp"
+set_config LOG_LEVEL=debug
 start_daemon
 wait_for_file_gt "$SANDBOX/hwmon/hwmon0/pwm1" 0
 

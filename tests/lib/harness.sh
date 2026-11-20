@@ -162,6 +162,12 @@ start_daemon() {
     /bin/sleep 0.5
 }
 
+# Pre-seed config keys before start_daemon; check_param appends the rest.
+# Use LOG_LEVEL=debug for tests that assert on TEMP:, CALC: or DEADBAND: lines.
+set_config() {
+    printf '%s\n' "$@" >>"$SANDBOX/config"
+}
+
 stop_daemon() {
     if [[ -n "${DAEMON_PID:-}" ]] && kill -0 "$DAEMON_PID" 2>/dev/null; then
         kill -TERM "$DAEMON_PID" 2>/dev/null || true

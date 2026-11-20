@@ -24,6 +24,7 @@ trap teardown_sandbox EXIT
 # Start with healthy sensor, high temp to enter ACTIVE state
 echo "70" >"$SANDBOX/cputemp"
 
+set_config LOG_LEVEL=debug
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
 

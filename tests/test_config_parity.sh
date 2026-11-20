@@ -65,15 +65,15 @@ done
 
 for block in 1 2 3; do
     sort -u "$WORK_DIR/heredoc-${block}" >"$WORK_DIR/heredoc-${block}.sorted"
-    assert_eq "$(wc -l <"$WORK_DIR/heredoc-${block}.sorted")" "18" \
+    assert_eq "$(wc -l <"$WORK_DIR/heredoc-${block}.sorted")" "19" \
         "heredoc ${block} parameter count"
 done
 
 sed -n 's/^DEFAULT_\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$DAEMON" | sort -u >"$WORK_DIR/defaults.sorted"
 sed -n 's/^[[:space:]]*check_param "\([A-Z][A-Z0-9_]*\)".*/\1/p' "$DAEMON" | sort -u >"$WORK_DIR/check-params.sorted"
 
-assert_eq "$(wc -l <"$WORK_DIR/defaults.sorted")" "18" "DEFAULT declaration count"
-assert_eq "$(wc -l <"$WORK_DIR/check-params.sorted")" "18" "check_param declaration count"
+assert_eq "$(wc -l <"$WORK_DIR/defaults.sorted")" "19" "DEFAULT declaration count"
+assert_eq "$(wc -l <"$WORK_DIR/check-params.sorted")" "19" "check_param declaration count"
 assert_same_set "$WORK_DIR/heredoc-1.sorted" "$WORK_DIR/heredoc-2.sorted" \
     "initial and migration config parameter sets"
 assert_same_set "$WORK_DIR/heredoc-1.sorted" "$WORK_DIR/heredoc-3.sorted" \
@@ -83,4 +83,4 @@ assert_same_set "$WORK_DIR/heredoc-1.sorted" "$WORK_DIR/defaults.sorted" \
 assert_same_set "$WORK_DIR/heredoc-1.sorted" "$WORK_DIR/check-params.sorted" \
     "config heredocs and check_param declarations"
 
-printf '✓ All 18 config parameters are present in every rewrite path\n'
+printf '✓ All 19 config parameters are present in every rewrite path\n'

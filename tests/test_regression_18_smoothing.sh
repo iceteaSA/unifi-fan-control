@@ -25,6 +25,7 @@ setup_sandbox
 # Start at 50°C — the initial smoothed temp
 echo "50" >"$SANDBOX/cputemp"
 
+set_config LOG_LEVEL=debug
 start_daemon
 assert_eq "$(daemon_alive && echo "alive" || echo "dead")" "alive"
 
