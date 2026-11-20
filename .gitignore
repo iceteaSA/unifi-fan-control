@@ -1,1 +1,9 @@
 /.idea/
+
+# Runtime state written when the daemon runs from this checkout
+/config
+/temp_state
+/optimal_pwm
+/*.tmp
+/*.new.*
+/*.rollback.*

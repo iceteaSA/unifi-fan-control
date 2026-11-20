@@ -117,11 +117,41 @@ test_no_pwm_devices_warns_cleanly() {
     printf '✓ No-PWM fixture warned and completed cleanly\n'
 }
 
+test_git_checkout_install_dir_kept() {
+    prepare_case
+    # No override: the install dir must come from the installed unit's WorkingDirectory.
+    unset FAN_CONTROL_INSTALL_DIR
+    local checkout="$SANDBOX/work/unifi-fan-control"
+    mkdir -p "$checkout"
+    mv "$SANDBOX/install/config" "$checkout/config"
+    printf 'WorkingDirectory=%s\nExecStart=%s/fan-control.sh\n' "$checkout" "$checkout" >"$FAN_CONTROL_SERVICE_FILE"
+    FAN_CONTROL_INSTALL_DIR="$checkout" # for the assertions below only
+    mkdir -p "$FAN_CONTROL_HWMON_BASE/hwmon0" "$FAN_CONTROL_INSTALL_DIR/.git"
+    printf '0\n' >"$FAN_CONTROL_HWMON_BASE/hwmon0/pwm1"
+    printf '60\n' >"$FAN_CONTROL_INSTALL_DIR/temp_state"
+    printf '91\n' >"$FAN_CONTROL_INSTALL_DIR/optimal_pwm"
+    printf 'uncommitted work\n' >"$FAN_CONTROL_INSTALL_DIR/fan-control.sh"
+
+    run_uninstaller
+
+    assert_removed "$FAN_CONTROL_INSTALL_DIR/config"
+    assert_removed "$FAN_CONTROL_INSTALL_DIR/temp_state"
+    assert_removed "$FAN_CONTROL_INSTALL_DIR/optimal_pwm"
+    assert_removed "$FAN_CONTROL_SERVICE_FILE"
+    [[ -d "$FAN_CONTROL_INSTALL_DIR/.git" ]] || fail "git checkout was removed"
+    assert_eq "$(cat "$FAN_CONTROL_INSTALL_DIR/fan-control.sh")" "uncommitted work" "checkout file: "
+    printf '✓ Git checkout install dir kept, runtime state removed\n'
+}
+
 case "${UNINSTALL_CASE:-all}" in
     all)
         test_class_directory_pwm_reset
         test_raw_device_pwm_reset
         test_no_pwm_devices_warns_cleanly
+        test_git_checkout_install_dir_kept
+        ;;
+    checkout)
+        test_git_checkout_install_dir_kept
         ;;
     class)
         test_class_directory_pwm_reset

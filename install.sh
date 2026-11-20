@@ -35,6 +35,12 @@ if [[ -f "$SCRIPT_PATH" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 fi
 
+# Run from a git checkout, the checkout itself is the install: the daemon keeps its
+# state beside itself and the unit is pointed at it instead of /data/fan-control.
+if [[ -z "${FAN_CONTROL_INSTALL_DIR:-}" && -n "$SCRIPT_DIR" && -d "$SCRIPT_DIR/.git" ]]; then
+    INSTALL_DIR="$SCRIPT_DIR"
+fi
+
 fail() {
     echo "Error: $*" >&2
     exit 1
@@ -436,7 +442,12 @@ stage_destination_files() {
     for filename in "${PAYLOAD_FILES[@]}"; do
         destination=$(payload_destination "$filename")
         new_file="${destination}.new.$$"
-        if ! cp "$WORK_DIR/payload/$filename" "$new_file"; then
+        if [[ "$filename" == "fan-control.service" ]]; then
+            # The shipped unit names /data/fan-control; point it at the actual install dir.
+            local unit
+            unit=$(<"$WORK_DIR/payload/$filename") || return 1
+            printf '%s\n' "${unit//\/data\/fan-control/"$INSTALL_DIR"}" >"$new_file" || return 1
+        elif ! cp "$WORK_DIR/payload/$filename" "$new_file"; then
             return 1
         fi
         if [[ "$filename" == "fan-control.sh" || "$filename" == "uninstall.sh" ]]; then

@@ -8,7 +8,7 @@ Adaptive fan controller for UniFi OS devices (UCG-Max, UCG-Fibre, UXG-Fibre, UDM
 - `install.sh` / `uninstall.sh` — run ON the UniFi device as root. `install.sh` uses complete local payloads first, then a checksum-verified pinned release (`FAN_CONTROL_VERSION`), an unverified branch (`FAN_CONTROL_BRANCH`), or the latest checksum-verified release. Tagged releases (`vX.Y.Z`) are the production identity.
 - `fan-control.service` — systemd unit installed to `/etc/systemd/system/`; runs `/data/fan-control/fan-control.sh` as root.
 - `VERSION` — repository release identity, stored as bare SemVer and logged at daemon startup.
-- Runtime state on device: `/data/fan-control/{config,temp_state,optimal_pwm}` plus `/var/run/fan-control.pid`.
+- Runtime state on device: `<install dir>/{config,temp_state,optimal_pwm}` plus `/var/run/fan-control.pid`. The install dir is `FAN_CONTROL_INSTALL_DIR` if set, else the git checkout `install.sh` lives in (in-place install; the unit is rewritten to point at it), else `/data/fan-control`. The daemon derives its paths from its own location, and `uninstall.sh` reads it from the unit's `WorkingDirectory` and never deletes a checkout.
 
 ## Verification
 

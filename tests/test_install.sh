@@ -451,6 +451,35 @@ test_local_payload_wins_without_curl() {
     assert_file_set
     assert_eq "$(cat "$INSTALL_DIR/VERSION")" "$MOCK_VERSION" "local version: "
     assert_eq "$(cat "$CURL_LOG")" "" "local payload made a network call: "
+    assert_contains "$(cat "$SERVICE_FILE")" "ExecStart=$INSTALL_DIR/fan-control.sh" "unit points at install dir: "
+}
+
+test_checkout_installs_in_place() {
+    prepare_case checkout
+    MOCK_VERSION=1.2.3
+    # No FAN_CONTROL_INSTALL_DIR: the .git directory alone must select the checkout.
+    INSTALL_DIR="$CASE_DIR/work/unifi-fan-control"
+    INSTALLER_DIR="$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR/.git"
+    cp "$INSTALLER" "$INSTALLER_DIR/install.sh"
+    make_payload_dir "$INSTALLER_DIR" "$MOCK_VERSION"
+    printf 'MIN_TEMP=48\n' >"$INSTALL_DIR/config"
+    expected_daemon=$(cat "$INSTALL_DIR/fan-control.sh")
+
+    install_environment FAN_CONTROL_INSTALL_DIR=
+
+    assert_file_set
+    unit=$(cat "$SERVICE_FILE")
+    assert_contains "$unit" "WorkingDirectory=$INSTALL_DIR$" "unit working dir: "
+    assert_contains "$unit" "ExecStart=$INSTALL_DIR/fan-control.sh" "unit exec path: "
+    if grep -q '/data/fan-control' <<<"$unit"; then
+        fail "checkout unit still names /data/fan-control"
+    fi
+    assert_eq "$(cat "$INSTALL_DIR/fan-control.sh")" "$expected_daemon" "in-place daemon: "
+    assert_eq "$(cat "$INSTALL_DIR/config")" "MIN_TEMP=48" "in-place config preservation: "
+    assert_eq "$(cat "$CURL_LOG")" "" "in-place install made a network call: "
+    leftovers=$(find "$INSTALL_DIR" -maxdepth 1 \( -name '*.new.*' -o -name '*.rollback.*' \))
+    assert_eq "$leftovers" "" "in-place install left temp files: "
 }
 
 test_exact_version_uses_verified_release_urls() {
@@ -794,6 +823,7 @@ test_restart_failure_restores_prior_payload() {
 }
 
 test_local_payload_wins_without_curl
+test_checkout_installs_in_place
 test_exact_version_uses_verified_release_urls
 test_piped_installer_ignores_cwd_payload
 test_latest_resolves_a_concrete_verified_release

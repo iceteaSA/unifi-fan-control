@@ -100,6 +100,19 @@ sudo ./install.sh
 When all four runtime files are beside `install.sh`, the installer uses those
 local files without a network request.
 
+Run from a git checkout, `install.sh` installs **in place**: the checkout becomes
+the install directory, the systemd unit is pointed at it, and the daemon keeps its
+`config`, `temp_state` and `optimal_pwm` beside itself (git-ignored). Otherwise
+everything goes to `/data/fan-control`. `FAN_CONTROL_INSTALL_DIR` overrides both.
+`uninstall.sh` finds the install directory from the unit and never deletes a
+checkout, only its runtime files. This is handy for testing a branch:
+```bash
+git clone https://github.com/marcel1337x/unifi-fan-control.git /data/work/unifi-fan-control
+cd /data/work/unifi-fan-control
+git checkout <branch>
+sudo ./install.sh                 # re-run after each git pull
+```
+
 ## Configuration
 Edit `/data/fan-control/config`:
 ```bash

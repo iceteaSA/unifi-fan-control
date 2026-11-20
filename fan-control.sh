@@ -6,10 +6,13 @@
 umask 077
 
 ###[ CONFIGURATION ]###########################################################
-CONFIG_FILE="${FAN_CONTROL_CONFIG_FILE:-/data/fan-control/config}"
-TEMP_STATE_FILE="${FAN_CONTROL_TEMP_STATE_FILE:-/data/fan-control/temp_state}"
+# State lives beside the script: /data/fan-control normally, the checkout itself
+# when install.sh was run from a git clone.
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${FAN_CONTROL_CONFIG_FILE:-$INSTALL_DIR/config}"
+TEMP_STATE_FILE="${FAN_CONTROL_TEMP_STATE_FILE:-$INSTALL_DIR/temp_state}"
 HWMON_BASE="${FAN_CONTROL_HWMON_BASE:-/sys/class/hwmon}"
-VERSION_FILE="${FAN_CONTROL_VERSION_FILE:-/data/fan-control/VERSION}"
+VERSION_FILE="${FAN_CONTROL_VERSION_FILE:-$INSTALL_DIR/VERSION}"
 DRIVE_DEV_DIR="${FAN_CONTROL_DRIVE_DEV_DIR:-/dev}"
 
 # Define default configuration values
@@ -22,7 +25,7 @@ DEFAULT_CHECK_INTERVAL=15                             # Base check interval (sec
 DEFAULT_TAPER_MINS=90                                 # Cool-down duration (minutes)
 DEFAULT_FAN_PWM_AUTODETECT=true                       # Auto-detect all active fan PWM channels
 DEFAULT_FAN_PWM_DEVICE="/sys/class/hwmon/hwmon0/pwm1" # Only used when FAN_PWM_AUTODETECT=false
-DEFAULT_OPTIMAL_PWM_FILE="${FAN_CONTROL_OPTIMAL_PWM_FILE:-/data/fan-control/optimal_pwm}"
+DEFAULT_OPTIMAL_PWM_FILE="${FAN_CONTROL_OPTIMAL_PWM_FILE:-$INSTALL_DIR/optimal_pwm}"
 DEFAULT_MAX_PWM_STEP=25 # Max PWM change per adjustment
 DEFAULT_DEADBAND=1      # Temp stability threshold (°C)
 DEFAULT_ALPHA=20        # Smoothing factor, lower values make the smoothed temp follow raw temp more closely (0-100)

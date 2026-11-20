@@ -2,8 +2,10 @@
 set -e
 
 HWMON_BASE="${FAN_CONTROL_HWMON_BASE:-/sys/class/hwmon}"
-INSTALL_DIR="${FAN_CONTROL_INSTALL_DIR:-/data/fan-control}"
 SERVICE_FILE="${FAN_CONTROL_SERVICE_FILE:-/etc/systemd/system/fan-control.service}"
+# install.sh points the unit at the install dir, which may be a git checkout.
+INSTALL_DIR="${FAN_CONTROL_INSTALL_DIR:-$(sed -n 's/^WorkingDirectory=//p' "$SERVICE_FILE" 2>/dev/null || true)}"
+INSTALL_DIR="${INSTALL_DIR:-/data/fan-control}"
 PID_FILE="${FAN_CONTROL_PID_FILE:-/var/run/fan-control.pid}"
 
 # Check for root privileges
@@ -56,7 +58,13 @@ rm -f "$PID_FILE" || echo "Warning: Could not remove PID file"
 
 # Remove data files
 echo "Removing data files..."
-if [ -d "$INSTALL_DIR" ]; then
+if [ -d "$INSTALL_DIR/.git" ]; then
+    # The install dir is a git checkout running in place: keep it, drop only runtime state.
+    rm -f "$INSTALL_DIR"/config "$INSTALL_DIR"/temp_state "$INSTALL_DIR"/optimal_pwm "$INSTALL_DIR"/*.tmp || {
+        echo "Warning: Could not remove runtime state from $INSTALL_DIR"
+    }
+    echo "Kept git checkout at $INSTALL_DIR"
+elif [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR" || {
         echo "Warning: Could not remove data directory"
         echo "You may need to manually remove $INSTALL_DIR"
